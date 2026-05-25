@@ -47,7 +47,7 @@ export class SavingsTargetRepository {
 
   async list(userId: string): Promise<SavingsTarget[]> {
     const rows = await db.select().from(savingsTargets).where(eq(savingsTargets.userId, userId));
-    return rows.map((r) => this.toDomain(r));
+    return rows.map((r : any) => this.toDomain(r));
   }
 
   async listWithProgress(userId: string, cutoffDate: string): Promise<SavingsTargetProgress[]> {

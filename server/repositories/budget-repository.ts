@@ -11,7 +11,7 @@ export class BudgetRepository {
       .from(budgets)
       .where(and(eq(budgets.userId, userId), eq(budgets.effectiveMonth, effectiveMonth)));
 
-    return rows.map((r) => this.toDomain(r));
+    return rows.map((r : any) => this.toDomain(r));
   }
 
   async upsert(userId: string, category: DailyExpenseCategory, month: string, monthlyLimit: number): Promise<Budget> {

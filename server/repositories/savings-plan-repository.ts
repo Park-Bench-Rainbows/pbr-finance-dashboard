@@ -35,7 +35,7 @@ export interface UpdateSavingsPlanDTO {
 export class SavingsPlanRepository {
   async findByUserId(userId: string): Promise<SavingsPlan[]> {
     const rows = await db.select().from(savingsPlans).where(eq(savingsPlans.userId, userId));
-    return rows.map((r) => this.toDomain(r));
+    return rows.map((r : any) => this.toDomain(r));
   }
 
   async findActiveForMonth(userId: string, month: string): Promise<SavingsPlan[]> {
@@ -53,7 +53,7 @@ export class SavingsPlanRepository {
         )
       );
 
-    return rows.map((r) => this.toDomain(r));
+    return rows.map((r : any) => this.toDomain(r));
   }
 
   async findActiveForMonthByTarget(userId: string, savingsTargetId: string, month: string): Promise<SavingsPlan[]> {
@@ -71,7 +71,7 @@ export class SavingsPlanRepository {
         )
       );
 
-    return rows.map((r) => this.toDomain(r));
+    return rows.map((r : any) => this.toDomain(r));
   }
 
   async create(userId: string, data: CreateSavingsPlanDTO): Promise<SavingsPlan> {

@@ -49,7 +49,7 @@ export class DailyExpenseRepository {
       .where(and(eq(dailyExpenses.userId, userId), eq(dailyExpenses.purchaseDate, dateISO)))
       .orderBy(dailyExpenses.createdAt);
 
-    return rows.map((r) => this.toDomain(r));
+    return rows.map((r : any) => this.toDomain(r));
   }
 
   async findForMonth(userId: string, month: string): Promise<DailyExpense[]> {
@@ -60,12 +60,12 @@ export class DailyExpenseRepository {
       .where(and(eq(dailyExpenses.userId, userId), gte(dailyExpenses.purchaseDate, start), lte(dailyExpenses.purchaseDate, end)))
       .orderBy(dailyExpenses.purchaseDate);
 
-    return rows.map((r) => this.toDomain(r));
+    return rows.map((r : any) => this.toDomain(r));
   }
 
   async findByUserId(userId: string): Promise<DailyExpense[]> {
     const rows = await db.select().from(dailyExpenses).where(eq(dailyExpenses.userId, userId));
-    return rows.map((r) => this.toDomain(r));
+    return rows.map((r : any) => this.toDomain(r));
   }
 
   async create(userId: string, data: CreateDailyExpenseDTO): Promise<DailyExpense> {

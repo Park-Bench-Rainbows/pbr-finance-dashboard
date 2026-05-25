@@ -44,7 +44,7 @@ export class SavingsTransactionRepository {
       )
       .orderBy(savingsTransactions.transactionDate);
 
-    return rows.map((r) => this.toDomain(r));
+    return rows.map((r : any) => this.toDomain(r));
   }
 
   async findForMonth(userId: string, month: string): Promise<SavingsTransaction[]> {
@@ -61,7 +61,7 @@ export class SavingsTransactionRepository {
       )
       .orderBy(savingsTransactions.transactionDate);
 
-    return rows.map((r) => this.toDomain(r));
+    return rows.map((r : any) => this.toDomain(r));
   }
 
   async findByTargetUpToDate(userId: string, targetId: string, cutoffDate: string): Promise<SavingsTransaction[]> {
@@ -77,7 +77,7 @@ export class SavingsTransactionRepository {
       )
       .orderBy(savingsTransactions.transactionDate);
 
-    return rows.map((r) => this.toDomain(r));
+    return rows.map((r : any) => this.toDomain(r));
   }
 
   async findByTargetsUpToDate(
@@ -95,7 +95,7 @@ export class SavingsTransactionRepository {
       .from(savingsTransactions)
       .where(and(eq(savingsTransactions.userId, userId), lte(savingsTransactions.transactionDate, cutoffDate), or(...targetClauses)));
 
-    return rows.map((r) => this.toDomain(r));
+    return rows.map((r : any) => this.toDomain(r));
   }
 
   async create(userId: string, data: CreateSavingsTransactionDTO): Promise<SavingsTransaction> {
