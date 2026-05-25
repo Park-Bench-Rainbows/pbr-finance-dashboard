@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { BrandMark } from '@/components/brand/brand-mark';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -43,16 +44,19 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle>Login</CardTitle>
+          <div className="flex items-center gap-2">
+            <BrandMark className="h-5 w-5" />
+            <CardTitle>Login</CardTitle>
+          </div>
           <CardDescription>Sign in to your finance dashboard</CardDescription>
         </CardHeader>
         <form onSubmit={handleLogin}>
           <CardContent className="space-y-4">
             {error && (
-              <div className="rounded-md bg-red-50 p-3 text-sm text-red-800">
+              <div className="rounded-lg border border-red-200/70 bg-red-50 p-3 text-sm text-red-800">
                 {error}
               </div>
             )}
@@ -82,12 +86,12 @@ export default function LoginPage() {
             </div>
           </CardContent>
           <CardFooter className="flex flex-col space-y-4">
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button type="submit" variant="brand" className="w-full" disabled={loading}>
               {loading ? 'Signing in...' : 'Sign In'}
             </Button>
-            <p className="text-center text-sm text-gray-600">
+            <p className="text-center text-sm text-muted-foreground">
               Don't have an account?{' '}
-              <Link href="/signup" className="text-blue-600 hover:underline">
+              <Link href="/signup" className="text-foreground underline-offset-4 hover:underline">
                 Sign up
               </Link>
             </p>

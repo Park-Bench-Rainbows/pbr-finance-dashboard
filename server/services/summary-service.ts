@@ -5,6 +5,7 @@ import { IncomeRepository } from '../repositories/income-repository';
 import { ExpenseRepository } from '../repositories/expense-repository';
 import { SavingsPlanService } from './savings-plan-service';
 import { DailyExpenseService } from './daily-expense-service';
+import { BudgetService } from './budget-service';
 
 /**
  * SummaryService - Calculates monthly financial summaries
@@ -14,17 +15,20 @@ export class SummaryService {
   private expenseRepository: ExpenseRepository;
   private savingsService: SavingsPlanService;
   private dailyExpenseService: DailyExpenseService;
+  private budgetService: BudgetService;
 
   constructor(
     incomeRepository?: IncomeRepository,
     expenseRepository?: ExpenseRepository,
     savingsService?: SavingsPlanService,
-    dailyExpenseService?: DailyExpenseService
+    dailyExpenseService?: DailyExpenseService,
+    budgetService?: BudgetService
   ) {
     this.incomeRepository = incomeRepository || new IncomeRepository();
     this.expenseRepository = expenseRepository || new ExpenseRepository();
     this.savingsService = savingsService || new SavingsPlanService();
     this.dailyExpenseService = dailyExpenseService || new DailyExpenseService();
+    this.budgetService = budgetService || new BudgetService(undefined, this.dailyExpenseService);
   }
   /**
    * Get monthly summary for a specific user and month
@@ -46,6 +50,10 @@ export class SummaryService {
     const remainingDisposable = disposableIncome - totalDailySpend;
     const dailySpendByCategory = await this.dailyExpenseService.groupByCategory(userId, month);
     const dailySpendByDay = await this.dailyExpenseService.groupByDay(userId, month);
+    const budgets = await this.budgetService.getBudgetsForMonth(userId, month);
+    const budgetsByCategory: any = {};
+    for (const b of budgets) budgetsByCategory[b.category] = b.monthlyLimit;
+    const budgetRemainingByCategory = await this.budgetService.computeRemainingByCategory(userId, month);
 
     return {
       month,
@@ -58,6 +66,8 @@ export class SummaryService {
       expensesByCategory,
       dailySpendByCategory,
       dailySpendByDay,
+      budgetsByCategory,
+      budgetRemainingByCategory,
     };
   }
 

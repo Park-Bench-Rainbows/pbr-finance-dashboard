@@ -5,6 +5,7 @@ import { UserSettingsService } from '@/server/services/user-settings-service';
 import { FxService } from '@/server/services/fx-service';
 import { SavingsPlanService } from '@/server/services/savings-plan-service';
 import { computeSavingsGoalSchedule, monthEnd, monthStart } from '@/server/services/savings-goal-scheduler';
+import { SavingsTargetRepository } from '@/server/repositories/savings-target-repository';
 
 const goalSchema = z.object({
   goalName: z.string().min(1, 'Goal name is required'),
@@ -20,6 +21,14 @@ function toYearMonth(date: Date): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
   return `${y}-${m}`;
+}
+
+function centsToDollars(cents: number): number {
+  return cents / 100;
+}
+
+function dollarsToCents(dollars: number): number {
+  return Math.round(dollars * 100);
 }
 
 export async function POST(request: NextRequest) {
@@ -52,13 +61,18 @@ export async function POST(request: NextRequest) {
     const settingsService = new UserSettingsService();
     const fxService = new FxService();
     const savingsService = new SavingsPlanService();
+    const savingsTargetRepo = new SavingsTargetRepository();
 
     const settings = await settingsService.getOrDefault(user.id);
     const baseCurrency = settings.baseCurrency;
     const quote = await fxService.getQuote(parsed.data.currency, baseCurrency);
+    const fxRate = parseFloat(quote.rate);
+    if (!Number.isFinite(fxRate) || fxRate <= 0) {
+      return NextResponse.json({ error: 'Failed to fetch FX rate' }, { status: 502 });
+    }
 
-    const targetOriginalCents = Math.round(parsed.data.targetAmount * 100);
-    const targetBaseCents = Math.round(targetOriginalCents * parseFloat(quote.rate));
+    const targetOriginalCents = dollarsToCents(parsed.data.targetAmount);
+    const targetBaseCents = Math.round(targetOriginalCents * fxRate);
 
     const existingByMonth: Record<string, number> = {};
     if (parsed.data.factorInExistingPlans) {
@@ -92,23 +106,33 @@ export async function POST(request: NextRequest) {
     }
 
     const createdPlans = [];
+    const target = await savingsTargetRepo.create(user.id, {
+      name: parsed.data.goalName,
+      baseCurrency,
+      targetAmount: targetBaseCents / 100,
+      startDate,
+      targetDate,
+      factorInExistingPlans: parsed.data.factorInExistingPlans,
+    });
 
     if (!parsed.data.factorInExistingPlans) {
       const monthsCount = schedule.length;
       const monthlyBaseCents = Math.ceil(targetBaseCents / monthsCount);
+      const monthlyOriginalCents = Math.round(monthlyBaseCents / fxRate);
 
       const created = await savingsService.create(user.id, {
         name: `${parsed.data.goalName} (goal)`,
-        amount: parsed.data.targetAmount,
+        amount: centsToDollars(monthlyOriginalCents),
         currency: parsed.data.currency,
         baseCurrency,
-        baseAmount: monthlyBaseCents / 100,
+        baseAmount: centsToDollars(monthlyBaseCents),
         fxRate: quote.rate,
         fxAsOf: quote.asOf,
         fxSource: quote.source,
         frequency: 'monthly',
         startDate,
         endDate: targetDate,
+        savingsTargetId: target.id,
       });
 
       createdPlans.push(created);
@@ -118,29 +142,30 @@ export async function POST(request: NextRequest) {
         const d = new Date(Number(yearStr), Number(monthStr) - 1, 1);
         const periodStart = monthStart(d);
         const periodEnd = monthEnd(d);
+        const monthlyOriginalCents = Math.round(monthItem.plannedBaseCents / fxRate);
 
         const created = await savingsService.create(user.id, {
           name: `${parsed.data.goalName} (goal: ${monthItem.month})`,
-          amount: parsed.data.targetAmount,
+          amount: centsToDollars(monthlyOriginalCents),
           currency: parsed.data.currency,
           baseCurrency,
-          baseAmount: monthItem.plannedBaseCents / 100,
+          baseAmount: centsToDollars(monthItem.plannedBaseCents),
           fxRate: quote.rate,
           fxAsOf: quote.asOf,
           fxSource: quote.source,
           frequency: 'monthly',
           startDate: periodStart,
           endDate: periodEnd,
+          savingsTargetId: target.id,
         });
 
         createdPlans.push(created);
       }
     }
 
-    return NextResponse.json({ createdPlans }, { status: 201 });
+    return NextResponse.json({ target, createdPlans }, { status: 201 });
   } catch (error) {
     console.error('Error creating savings goal:', error);
     return NextResponse.json({ error: 'Failed to create savings goal' }, { status: 500 });
   }
 }
-

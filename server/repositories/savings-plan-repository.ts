@@ -15,6 +15,7 @@ export interface CreateSavingsPlanDTO {
   frequency: 'monthly' | 'biweekly';
   startDate: Date;
   endDate?: Date;
+  savingsTargetId?: string;
 }
 
 export interface UpdateSavingsPlanDTO {
@@ -55,6 +56,24 @@ export class SavingsPlanRepository {
     return rows.map((r) => this.toDomain(r));
   }
 
+  async findActiveForMonthByTarget(userId: string, savingsTargetId: string, month: string): Promise<SavingsPlan[]> {
+    const monthStr = `${month}-01`;
+
+    const rows = await db
+      .select()
+      .from(savingsPlans)
+      .where(
+        and(
+          eq(savingsPlans.userId, userId),
+          eq(savingsPlans.savingsTargetId, savingsTargetId),
+          lte(savingsPlans.startDate, monthStr),
+          or(gte(savingsPlans.endDate, monthStr), isNull(savingsPlans.endDate))
+        )
+      );
+
+    return rows.map((r) => this.toDomain(r));
+  }
+
   async create(userId: string, data: CreateSavingsPlanDTO): Promise<SavingsPlan> {
     const [row] = await db
       .insert(savingsPlans)
@@ -71,6 +90,7 @@ export class SavingsPlanRepository {
         frequency: data.frequency,
         startDate: data.startDate.toISOString().split('T')[0],
         endDate: data.endDate?.toISOString().split('T')[0],
+        savingsTargetId: data.savingsTargetId,
       })
       .returning();
 
@@ -129,6 +149,7 @@ export class SavingsPlanRepository {
       frequency: row.frequency,
       startDate: new Date(row.startDate),
       endDate: row.endDate ? new Date(row.endDate) : undefined,
+      savingsTargetId: row.savingsTargetId ?? undefined,
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt),
     };
