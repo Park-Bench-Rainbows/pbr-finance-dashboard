@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { BrandMark } from '@/components/brand/brand-mark';
+import { PageLoading } from '@/components/ui/page-loading';
 
 type CurrencyCode = 'TTD' | 'USD' | 'CAD';
 type ThemeMode = 'light' | 'dark' | 'system';
@@ -78,7 +79,7 @@ export default function SettingsPage() {
     }
   };
 
-  if (loading) return <div className="text-sm text-muted-foreground">Loading settings…</div>;
+  if (loading) return <PageLoading variant="simple" />;
 
   return (
     <div className="space-y-6">
@@ -138,8 +139,14 @@ export default function SettingsPage() {
             )}
 
             <div className="flex items-center gap-3">
-              <Button onClick={handleSave} disabled={saving || !settings} variant="brand">
-                {saving ? 'Saving...' : 'Save'}
+              <Button
+                onClick={handleSave}
+                disabled={!settings}
+                variant="brand"
+                isLoading={saving}
+                loadingText="Saving…"
+              >
+                Save
               </Button>
             </div>
           </CardContent>

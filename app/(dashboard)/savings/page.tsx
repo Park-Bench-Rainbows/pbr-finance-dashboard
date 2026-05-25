@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { PageLoading } from '@/components/ui/page-loading';
 
 type CurrencyCode = 'TTD' | 'USD' | 'CAD';
 
@@ -280,6 +281,10 @@ export default function SavingsPage() {
   };
 
   if (loading) return <div>Loading...</div>;
+
+  if (loading) {
+    return <PageLoading variant="table" />;
+  }
 
   return (
     <div className="space-y-6">

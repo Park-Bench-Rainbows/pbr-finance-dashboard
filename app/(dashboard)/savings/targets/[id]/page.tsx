@@ -213,7 +213,7 @@ export default function SavingsTargetDetailsPage() {
           <div className="flex items-center gap-2">
             <h1 className="text-3xl font-bold">{target.name}</h1>
             {target.status && (
-              <Badge variant={target.status === 'on_track' ? 'default' : 'destructive'}>
+              <Badge variant={target.status === 'on_track' ? 'default' : 'danger'}>
                 {target.status === 'on_track' ? 'On track' : 'Behind'}
               </Badge>
             )}

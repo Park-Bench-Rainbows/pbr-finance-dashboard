@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts';
+import { PageLoading } from '@/components/ui/page-loading';
 
 interface Expense {
   id: string;
@@ -88,6 +89,8 @@ function currentMonth(): string {
 export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [baseCurrency, setBaseCurrency] = useState<CurrencyCode>('TTD');
@@ -152,6 +155,7 @@ export default function ExpensesPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
 
     const payload = {
       name: formData.name,
@@ -163,6 +167,7 @@ export default function ExpensesPage() {
       endDate: formData.endDate || undefined,
     };
 
+    setSaving(true);
     try {
       const url = editingExpense ? `/api/expenses/${editingExpense.id}` : '/api/expenses';
       const method = editingExpense ? 'PATCH' : 'POST';
@@ -174,25 +179,31 @@ export default function ExpensesPage() {
       });
 
       if (response.ok) {
-        fetchExpenses();
+        await fetchExpenses();
         setDialogOpen(false);
         resetForm();
       }
     } catch (error) {
       console.error('Error saving expense:', error);
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this expense?')) return;
+    if (deletingId) return;
 
+    setDeletingId(id);
     try {
       const response = await fetch(`/api/expenses/${id}`, { method: 'DELETE' });
       if (response.ok) {
-        fetchExpenses();
+        await fetchExpenses();
       }
     } catch (error) {
       console.error('Error deleting expense:', error);
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -229,7 +240,7 @@ export default function ExpensesPage() {
   };
 
   if (loading) {
-    return <div>Loading...</div>;
+    return <PageLoading variant="table" />;
   }
 
   return (
@@ -350,7 +361,9 @@ export default function ExpensesPage() {
                 <Button type="button" variant="outline" onClick={handleDialogClose}>
                   Cancel
                 </Button>
-                <Button type="submit">{editingExpense ? 'Update' : 'Add'}</Button>
+                <Button type="submit" isLoading={saving} loadingText={editingExpense ? 'Updating…' : 'Adding…'}>
+                  {editingExpense ? 'Update' : 'Add'}
+                </Button>
               </DialogFooter>
             </form>
           </DialogContent>
@@ -493,6 +506,7 @@ export default function ExpensesPage() {
                       size="sm"
                       onClick={() => handleEdit(expense)}
                       className="mr-2"
+                      disabled={Boolean(deletingId)}
                     >
                       Edit
                     </Button>
@@ -501,6 +515,8 @@ export default function ExpensesPage() {
                       size="sm"
                       onClick={() => handleDelete(expense.id)}
                       className="text-red-600 hover:text-red-700"
+                      isLoading={deletingId === expense.id}
+                      loadingText="Deleting…"
                     >
                       Delete
                     </Button>

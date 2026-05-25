@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PageLoading } from '@/components/ui/page-loading';
 
 type Category = 'food' | 'gas' | 'coffee' | 'groceries' | 'dining' | 'transport' | 'other';
 
@@ -34,13 +35,15 @@ export default function BudgetsPage() {
   const [budgets, setBudgets] = useState<Record<Category, number>>({
     food: 0, gas: 0, coffee: 0, groceries: 0, dining: 0, transport: 0, other: 0,
   });
-  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [savingCategory, setSavingCategory] = useState<Category | null>(null);
 
   useEffect(() => {
     load();
   }, [month]);
 
   const load = async () => {
+    setLoading(true);
     try {
       const res = await fetch(`/api/budgets?month=${month}`);
       if (!res.ok) return;
@@ -50,11 +53,14 @@ export default function BudgetsPage() {
       setBudgets(next);
     } catch {
       // ignore
+    } finally {
+      setLoading(false);
     }
   };
 
   const saveCategory = async (category: Category) => {
-    setSaving(true);
+    if (savingCategory) return;
+    setSavingCategory(category);
     try {
       await fetch('/api/budgets', {
         method: 'PUT',
@@ -62,9 +68,13 @@ export default function BudgetsPage() {
         body: JSON.stringify({ month, category, monthlyLimit: budgets[category] }),
       });
     } finally {
-      setSaving(false);
+      setSavingCategory(null);
     }
   };
+
+  if (loading) {
+    return <PageLoading variant="simple" />;
+  }
 
   return (
     <div className="space-y-6">
@@ -97,7 +107,11 @@ export default function BudgetsPage() {
                     onChange={(e) => setBudgets({ ...budgets, [cat.value]: parseFloat(e.target.value || '0') })}
                   />
                 </div>
-                <Button onClick={() => saveCategory(cat.value)} disabled={saving}>
+                <Button
+                  onClick={() => saveCategory(cat.value)}
+                  isLoading={savingCategory === cat.value}
+                  loadingText="Saving…"
+                >
                   Save
                 </Button>
               </div>

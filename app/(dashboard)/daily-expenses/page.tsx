@@ -13,6 +13,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFo
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, XAxis, YAxis } from 'recharts';
 import { aggregateDailyTotals, heatBucket, monthGrid } from '@/lib/calendar-heatmap';
+import { PageLoading } from '@/components/ui/page-loading';
 
 type CurrencyCode = 'TTD' | 'USD' | 'CAD';
 type DailyCategory = 'food' | 'gas' | 'coffee' | 'groceries' | 'dining' | 'transport' | 'other';
@@ -110,6 +111,8 @@ function monthOptions() {
 export default function DailyExpensesPage() {
   const [items, setItems] = useState<DailyExpense[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<DailyExpense | null>(null);
   const [baseCurrency, setBaseCurrency] = useState<CurrencyCode>('TTD');
@@ -231,16 +234,22 @@ export default function DailyExpensesPage() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this expense?')) return;
+    if (deletingId) return;
+
+    setDeletingId(id);
     try {
       const res = await fetch(`/api/daily-expenses/${id}`, { method: 'DELETE' });
       if (res.ok) await refreshAfterMutation(selectedDate ?? undefined);
     } catch (e) {
       console.error('Error deleting daily expense:', e);
+    } finally {
+      setDeletingId(null);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
     const payload = {
       description: formData.description,
       amount: parseFloat(formData.amount),
@@ -249,6 +258,7 @@ export default function DailyExpensesPage() {
       purchaseDate: formData.purchaseDate,
     };
 
+    setSaving(true);
     try {
       const url = editing ? `/api/daily-expenses/${editing.id}` : '/api/daily-expenses';
       const method = editing ? 'PATCH' : 'POST';
@@ -264,10 +274,10 @@ export default function DailyExpensesPage() {
       }
     } catch (err) {
       console.error('Error saving daily expense:', err);
+    } finally {
+      setSaving(false);
     }
   };
-
-  if (loading) return <div>Loading...</div>;
 
   const today = todayISO();
   const totalsByDate = aggregateDailyTotals(items);
@@ -282,6 +292,10 @@ export default function DailyExpensesPage() {
     3: 'bg-emerald-500/30 hover:bg-emerald-500/35',
     4: 'bg-emerald-500/40 hover:bg-emerald-500/45',
   };
+
+  if (loading) {
+    return <PageLoading variant="table" />;
+  }
 
   return (
     <div className="space-y-6">
@@ -382,7 +396,9 @@ export default function DailyExpensesPage() {
                 <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button type="submit">{editing ? 'Update' : 'Add'}</Button>
+                <Button type="submit" isLoading={saving} loadingText={editing ? 'Updating…' : 'Adding…'}>
+                  {editing ? 'Update' : 'Add'}
+                </Button>
               </DialogFooter>
             </form>
             </DialogContent>
@@ -650,7 +666,13 @@ export default function DailyExpensesPage() {
                     </div>
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="sm" className="mr-2" onClick={() => handleEdit(item)}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="mr-2"
+                      onClick={() => handleEdit(item)}
+                      disabled={Boolean(deletingId)}
+                    >
                       Edit
                     </Button>
                     <Button
@@ -658,6 +680,8 @@ export default function DailyExpensesPage() {
                       size="sm"
                       className="text-red-600 hover:text-red-700"
                       onClick={() => handleDelete(item.id)}
+                      isLoading={deletingId === item.id}
+                      loadingText="Deleting…"
                     >
                       Delete
                     </Button>

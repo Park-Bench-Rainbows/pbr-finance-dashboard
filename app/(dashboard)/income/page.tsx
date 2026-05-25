@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { PageLoading } from '@/components/ui/page-loading';
 
 interface Income {
   id: string;
@@ -43,6 +44,8 @@ const formatISODate = (value: string) => {
 export default function IncomePage() {
   const [incomes, setIncomes] = useState<Income[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingIncome, setEditingIncome] = useState<Income | null>(null);
   const [baseCurrency, setBaseCurrency] = useState<CurrencyCode>('TTD');
@@ -92,6 +95,7 @@ export default function IncomePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
 
     const payload = {
       name: formData.name,
@@ -102,6 +106,7 @@ export default function IncomePage() {
       endDate: formData.endDate || undefined,
     };
 
+    setSaving(true);
     try {
       const url = editingIncome ? `/api/income/${editingIncome.id}` : '/api/income';
       const method = editingIncome ? 'PATCH' : 'POST';
@@ -113,25 +118,31 @@ export default function IncomePage() {
       });
 
       if (response.ok) {
-        fetchIncomes();
+        await fetchIncomes();
         setDialogOpen(false);
         resetForm();
       }
     } catch (error) {
       console.error('Error saving income:', error);
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this income?')) return;
+    if (deletingId) return;
 
+    setDeletingId(id);
     try {
       const response = await fetch(`/api/income/${id}`, { method: 'DELETE' });
       if (response.ok) {
-        fetchIncomes();
+        await fetchIncomes();
       }
     } catch (error) {
       console.error('Error deleting income:', error);
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -166,7 +177,7 @@ export default function IncomePage() {
   };
 
   if (loading) {
-    return <div>Loading...</div>;
+    return <PageLoading variant="table" />;
   }
 
   return (
@@ -269,7 +280,9 @@ export default function IncomePage() {
                 <Button type="button" variant="outline" onClick={handleDialogClose}>
                   Cancel
                 </Button>
-                <Button type="submit">{editingIncome ? 'Update' : 'Add'}</Button>
+                <Button type="submit" isLoading={saving} loadingText={editingIncome ? 'Updating…' : 'Adding…'}>
+                  {editingIncome ? 'Update' : 'Add'}
+                </Button>
               </DialogFooter>
             </form>
           </DialogContent>
@@ -318,6 +331,7 @@ export default function IncomePage() {
                       size="sm"
                       onClick={() => handleEdit(income)}
                       className="mr-2"
+                      disabled={Boolean(deletingId)}
                     >
                       Edit
                     </Button>
@@ -326,6 +340,8 @@ export default function IncomePage() {
                       size="sm"
                       onClick={() => handleDelete(income.id)}
                       className="text-red-600 hover:text-red-700"
+                      isLoading={deletingId === income.id}
+                      loadingText="Deleting…"
                     >
                       Delete
                     </Button>

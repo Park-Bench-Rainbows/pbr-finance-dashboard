@@ -100,6 +100,33 @@ export function ChartContainer({
 
 export const ChartTooltip = Tooltip
 
+type RechartsTooltipPayloadItem = {
+  name?: unknown
+  value?: unknown
+  dataKey?: unknown
+  color?: unknown
+  payload?: unknown
+}
+
+type RechartsTooltipContentProps = {
+  active?: boolean
+  payload?: RechartsTooltipPayloadItem[]
+  label?: unknown
+  className?: string
+}
+
+type RechartsLegendPayloadItem = {
+  value?: unknown
+  dataKey?: unknown
+  color?: unknown
+  payload?: unknown
+}
+
+type RechartsLegendContentProps = {
+  payload?: RechartsLegendPayloadItem[]
+  className?: string
+}
+
 export function ChartTooltipContent({
   active,
   payload,
@@ -111,12 +138,13 @@ export function ChartTooltipContent({
   labelKey,
   nameKey,
   formatter,
-}: TooltipProps<number, string> & {
+}: RechartsTooltipContentProps & {
   hideLabel?: boolean
   hideIndicator?: boolean
   indicator?: "dot" | "line" | "dashed"
   labelKey?: string
   nameKey?: string
+  formatter?: TooltipProps<number, string>["formatter"]
 }) {
   const { config } = useChart()
 
@@ -164,18 +192,18 @@ export function ChartTooltipContent({
               {indicatorNode}
               <div className="min-w-0 flex-1">
                 <div className="truncate text-xs text-muted-foreground">
-                  {itemConfig?.label ?? item.name}
+                  {(itemConfig?.label ?? (item.name as React.ReactNode))}
                 </div>
               </div>
               <div className="shrink-0 text-xs font-medium tabular-nums">
                 {formatter
-                  ? formatter(item.value as any, item.name as any, item, index)
+                  ? formatter(item.value as any, item.name as any, item as any, index, payload as any)
                   : (item.value as React.ReactNode)}
               </div>
             </div>
           )
 
-          return <div key={item.dataKey ?? item.name ?? index}>{nameNode}</div>
+          return <div key={String(item.dataKey ?? item.name ?? index)}>{nameNode}</div>
         })}
       </div>
     </div>
@@ -188,7 +216,7 @@ export function ChartLegendContent({
   payload,
   className,
   nameKey,
-}: LegendProps & { nameKey?: string }) {
+}: RechartsLegendContentProps & { nameKey?: string }) {
   const { config } = useChart()
 
   if (!payload?.length) return null
@@ -203,7 +231,9 @@ export function ChartLegendContent({
         return (
           <div key={String(item.value)} className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color as string }} />
-            <span className="text-xs text-muted-foreground">{itemConfig?.label ?? item.value}</span>
+            <span className="text-xs text-muted-foreground">
+              {itemConfig?.label ?? (item.value as React.ReactNode)}
+            </span>
           </div>
         )
       })}
