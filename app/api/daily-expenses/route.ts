@@ -15,6 +15,7 @@ const createDailyExpenseSchema = z.object({
 
 const querySchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/, 'Invalid month format (use YYYY-MM)').optional(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format (use YYYY-MM-DD)').optional(),
 });
 
 export async function GET(request: NextRequest) {
@@ -25,15 +26,18 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month') ?? undefined;
-    const parsed = querySchema.safeParse({ month });
+    const date = searchParams.get('date') ?? undefined;
+    const parsed = querySchema.safeParse({ month, date });
     if (!parsed.success) {
       return NextResponse.json({ error: 'Validation failed', details: parsed.error.issues }, { status: 400 });
     }
 
     const service = new DailyExpenseService();
-    const rows = parsed.data.month
-      ? await service.getForMonth(user.id, parsed.data.month)
-      : await service.getForMonth(user.id, new Date().toISOString().slice(0, 7));
+    const rows = parsed.data.date
+      ? await service.getForDate(user.id, parsed.data.date)
+      : parsed.data.month
+        ? await service.getForMonth(user.id, parsed.data.month)
+        : await service.getForMonth(user.id, new Date().toISOString().slice(0, 7));
 
     return NextResponse.json(rows);
   } catch (error) {
@@ -84,4 +88,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to create daily expense' }, { status: 500 });
   }
 }
-

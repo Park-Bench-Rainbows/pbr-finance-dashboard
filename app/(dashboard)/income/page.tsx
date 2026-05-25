@@ -35,6 +35,11 @@ const formatCurrency = (amount: number, currency: CurrencyCode) => {
   }).format(amount);
 };
 
+const formatISODate = (value: string) => {
+  const iso = value.includes('T') ? value : `${value}T00:00:00Z`;
+  return new Date(iso).toLocaleDateString('en-US', { timeZone: 'UTC' });
+};
+
 export default function IncomePage() {
   const [incomes, setIncomes] = useState<Income[]>([]);
   const [loading, setLoading] = useState(true);
@@ -303,9 +308,9 @@ export default function IncomePage() {
                     </div>
                   </TableCell>
                   <TableCell className="capitalize">{income.frequency}</TableCell>
-                  <TableCell>{new Date(income.startDate).toLocaleDateString()}</TableCell>
+                  <TableCell>{formatISODate(income.startDate)}</TableCell>
                   <TableCell>
-                    {income.endDate ? new Date(income.endDate).toLocaleDateString() : 'Ongoing'}
+                    {income.endDate ? formatISODate(income.endDate) : 'Ongoing'}
                   </TableCell>
                   <TableCell className="text-right">
                     <Button

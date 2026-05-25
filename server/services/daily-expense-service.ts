@@ -17,6 +17,10 @@ export class DailyExpenseService {
     return this.repo.findForMonth(userId, month);
   }
 
+  async getForDate(userId: string, dateISO: string): Promise<DailyExpense[]> {
+    return this.repo.findForDate(userId, dateISO);
+  }
+
   async create(userId: string, data: CreateDailyExpenseDTO): Promise<DailyExpense> {
     return this.repo.create(userId, data);
   }
@@ -55,4 +59,3 @@ export class DailyExpenseService {
       .map(([date, amount]) => ({ date, amount }));
   }
 }
-

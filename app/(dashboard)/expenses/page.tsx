@@ -2,11 +2,15 @@
 
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
+import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts';
 
 interface Expense {
   id: string;
@@ -22,6 +26,12 @@ interface Expense {
 }
 
 type CurrencyCode = 'TTD' | 'USD' | 'CAD';
+type MonthlySummary = { expensesByCategory: Record<string, number> };
+
+const n = (value: unknown): number => {
+  const num = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(num) ? num : 0;
+};
 
 const currencies: { value: CurrencyCode; label: string }[] = [
   { value: 'TTD', label: 'TTD' },
@@ -36,6 +46,22 @@ const formatCurrency = (amount: number, currency: CurrencyCode) => {
   }).format(amount);
 };
 
+const formatISODate = (value: string) => {
+  const iso = value.includes('T') ? value : `${value}T00:00:00Z`;
+  return new Date(iso).toLocaleDateString('en-US', { timeZone: 'UTC' });
+};
+
+const COLORS = ['#3B82F6', '#22C55E', '#F97316', '#8B5CF6', '#FACC15', '#A16207'];
+
+const expensesCategoryChartConfig = {
+  housing: { label: 'Housing', color: 'var(--chart-1)' },
+  utilities: { label: 'Utilities', color: 'var(--chart-2)' },
+  subscriptions: { label: 'Subscriptions', color: 'var(--chart-3)' },
+  insurance: { label: 'Insurance', color: 'var(--chart-4)' },
+  transportation: { label: 'Transportation', color: 'var(--chart-5)' },
+  other: { label: 'Other', color: 'var(--chart-3)' },
+} satisfies ChartConfig;
+
 const categories = [
   { value: 'housing', label: 'Housing' },
   { value: 'utilities', label: 'Utilities' },
@@ -45,12 +71,27 @@ const categories = [
   { value: 'other', label: 'Other' },
 ];
 
+const categoryBadgeVariant: Record<string, React.ComponentProps<typeof Badge>["variant"]> = {
+  housing: "info",
+  utilities: "warning",
+  subscriptions: "purple",
+  insurance: "teal",
+  transportation: "success",
+  other: "default",
+};
+
+function currentMonth(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
 export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [baseCurrency, setBaseCurrency] = useState<CurrencyCode>('TTD');
+  const [summary, setSummary] = useState<MonthlySummary>({ expensesByCategory: {} });
   const [formData, setFormData] = useState({
     name: '',
     amount: '',
@@ -66,7 +107,7 @@ export default function ExpensesPage() {
   }, []);
 
   const load = async () => {
-    await Promise.all([fetchSettings(), fetchExpenses()]);
+    await Promise.all([fetchSettings(), fetchExpenses(), fetchSummary()]);
   };
 
   const fetchSettings = async () => {
@@ -93,6 +134,19 @@ export default function ExpensesPage() {
       console.error('Error fetching expenses:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchSummary = async () => {
+    try {
+      const month = currentMonth();
+      const response = await fetch(`/api/summary?month=${month}`);
+      if (response.ok) {
+        const data = await response.json();
+        setSummary({ expensesByCategory: data.expensesByCategory ?? {} });
+      }
+    } catch (error) {
+      console.error('Error fetching summary:', error);
     }
   };
 
@@ -303,6 +357,94 @@ export default function ExpensesPage() {
         </Dialog>
       </div>
 
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Expenses by Category</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {Object.keys(summary.expensesByCategory ?? {}).length > 0 ? (
+                <ChartContainer config={expensesCategoryChartConfig} className="min-h-[260px] w-full">
+                  <ResponsiveContainer width="100%" height={260}>
+                    <PieChart>
+                      <Pie
+                        data={Object.entries(summary.expensesByCategory).map(([category, amount]) => ({
+                          name: categories.find((c) => c.value === category)?.label ?? category,
+                          value: n(amount),
+                          fill: `var(--color-${category})`,
+                        }))}
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={90}
+                        dataKey="value"
+                        labelLine={false}
+                        label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
+                      >
+                        {Object.entries(summary.expensesByCategory).map(([category]) => (
+                          <Cell
+                            key={`exp-cat-${category}`}
+                            fill={`var(--color-${category})`}
+                          />
+                        ))}
+                      </Pie>
+                      <ChartTooltip
+                        content={
+                          <ChartTooltipContent
+                            formatter={(value) => formatCurrency(value as number, baseCurrency)}
+                            indicator="dot"
+                          />
+                        }
+                      />
+                      <ChartLegend content={<ChartLegendContent />} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </ChartContainer>
+              ) : (
+                <div className="flex h-[260px] items-center justify-center text-muted-foreground">
+                  No expenses to display
+                </div>
+              )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Category Breakdown</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {Object.keys(summary.expensesByCategory ?? {}).length > 0 ? (
+                <div className="space-y-3">
+                  {Object.entries(summary.expensesByCategory)
+                    .map(([category, amount]) => ({
+                      category,
+                      label: categories.find((c) => c.value === category)?.label ?? category,
+                      amount: n(amount),
+                    }))
+                    .sort((a, b) => b.amount - a.amount)
+                    .map((row, idx) => (
+                      <div key={row.category} className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="h-3 w-3 rounded"
+                            style={{ backgroundColor: COLORS[idx % COLORS.length] }}
+                          />
+                          <span className="font-medium">{row.label}</span>
+                        </div>
+                        <span className="font-semibold tabular-nums">
+                          {formatCurrency(row.amount, baseCurrency)}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              ) : (
+                <div className="flex h-[260px] items-center justify-center text-muted-foreground">
+                  No expenses to display
+                </div>
+              )}
+          </CardContent>
+        </Card>
+      </div>
+
       {expenses.length === 0 ? (
         <div className="rounded-lg border border-dashed p-8 text-center">
           <p className="text-muted-foreground">No expenses yet. Add your first one!</p>
@@ -336,10 +478,14 @@ export default function ExpensesPage() {
                     </div>
                   </TableCell>
                   <TableCell className="capitalize">{expense.frequency}</TableCell>
-                  <TableCell className="capitalize">{expense.category}</TableCell>
-                  <TableCell>{new Date(expense.startDate).toLocaleDateString()}</TableCell>
                   <TableCell>
-                    {expense.endDate ? new Date(expense.endDate).toLocaleDateString() : 'Ongoing'}
+                    <Badge variant={categoryBadgeVariant[expense.category] ?? 'default'}>
+                      {categories.find((c) => c.value === expense.category)?.label ?? expense.category}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{formatISODate(expense.startDate)}</TableCell>
+                  <TableCell>
+                    {expense.endDate ? formatISODate(expense.endDate) : 'Ongoing'}
                   </TableCell>
                   <TableCell className="text-right">
                     <Button

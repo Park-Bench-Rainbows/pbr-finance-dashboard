@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -22,18 +24,84 @@ interface SavingsPlan {
   endDate?: string;
 }
 
+interface SavingsTarget {
+  id: string;
+  name: string;
+  baseCurrency: CurrencyCode;
+  targetAmount: number;
+  startDate: string;
+  targetDate: string;
+  factorInExistingPlans: boolean;
+  plannedToDate?: number;
+  plannedTotal?: number;
+  percentPlannedToDate?: number;
+  expectedToDate?: number;
+  actualToDate?: number;
+  percentActualToDate?: number;
+  status?: 'on_track' | 'behind';
+}
+
 const currencies: CurrencyCode[] = ['TTD', 'USD', 'CAD'];
 
 const formatCurrency = (amount: number, currency: CurrencyCode) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount);
 
+const formatISODate = (value: string) => {
+  const iso = value.includes('T') ? value : `${value}T00:00:00Z`;
+  return new Date(iso).toLocaleDateString('en-US', { timeZone: 'UTC' });
+};
+
+const n = (value: unknown): number => {
+  const num = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(num) ? num : 0;
+};
+
+function currentMonth(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function monthOptions() {
+  const options: { value: string; label: string }[] = [];
+  const now = new Date();
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(Date.UTC(now.getFullYear(), now.getMonth() - i, 1));
+    const value = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    const label = d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', timeZone: 'UTC' });
+    options.push({ value, label });
+  }
+  return options;
+}
+
 export default function SavingsPage() {
+  const router = useRouter();
   const [plans, setPlans] = useState<SavingsPlan[]>([]);
+  const [targets, setTargets] = useState<SavingsTarget[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [goalDialogOpen, setGoalDialogOpen] = useState(false);
   const [editing, setEditing] = useState<SavingsPlan | null>(null);
   const [baseCurrency, setBaseCurrency] = useState<CurrencyCode>('TTD');
+  const [targetsMonth, setTargetsMonth] = useState(currentMonth());
+  const [contribDialogOpen, setContribDialogOpen] = useState(false);
+  const [contribData, setContribData] = useState({
+    description: '',
+    amount: '',
+    currency: 'TTD' as CurrencyCode,
+    transactionDate: new Date().toISOString().slice(0, 10),
+    savingsTargetId: '__none__' as string,
+  });
+  const [whatIfTarget, setWhatIfTarget] = useState<SavingsTarget | null>(null);
+  const [whatIfDialogOpen, setWhatIfDialogOpen] = useState(false);
+  const [whatIfData, setWhatIfData] = useState({
+    targetAmount: '',
+    currency: 'TTD' as CurrencyCode,
+    startDate: '',
+    targetDate: '',
+    factorInExistingPlans: false,
+  });
+  const [whatIfPreview, setWhatIfPreview] = useState<{ month: string; plannedBaseAmount: number }[] | null>(null);
+  const [whatIfLoading, setWhatIfLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     amount: '',
@@ -58,7 +126,7 @@ export default function SavingsPage() {
   }, []);
 
   const load = async () => {
-    await Promise.all([fetchSettings(), fetchPlans()]);
+    await Promise.all([fetchSettings(), fetchPlans(), fetchTargets()]);
   };
 
   const fetchSettings = async () => {
@@ -86,6 +154,22 @@ export default function SavingsPage() {
       setLoading(false);
     }
   };
+
+  const fetchTargets = async () => {
+    try {
+      const res = await fetch(`/api/savings-targets?month=${targetsMonth}`);
+      if (res.ok) {
+        setTargets(await res.json());
+      }
+    } catch (e) {
+      console.error('Error fetching savings targets:', e);
+    }
+  };
+
+  useEffect(() => {
+    fetchTargets();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetsMonth]);
 
   const resetForm = () => {
     setEditing(null);
@@ -138,18 +222,46 @@ export default function SavingsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const payload = {
-      name: formData.name,
-      amount: parseFloat(formData.amount),
-      currency: formData.currency,
-      frequency: formData.frequency,
-      startDate: formData.startDate,
-      endDate: formData.endDate || undefined,
-    };
+    const amountNumber = parseFloat(formData.amount);
+    const amountCents = Number.isFinite(amountNumber) ? Math.round(amountNumber * 100) : NaN;
+
+    const payload: Record<string, unknown> = {};
+
+    if (!editing) {
+      payload.name = formData.name;
+      payload.amount = amountNumber;
+      payload.currency = formData.currency;
+      payload.frequency = formData.frequency;
+      payload.startDate = formData.startDate;
+      payload.endDate = formData.endDate || undefined;
+    } else {
+      if (formData.name !== editing.name) payload.name = formData.name;
+      if (formData.frequency !== editing.frequency) payload.frequency = formData.frequency;
+      if (formData.startDate !== editing.startDate.split('T')[0]) payload.startDate = formData.startDate;
+
+      const editingEnd = editing.endDate ? editing.endDate.split('T')[0] : '';
+      if ((formData.endDate || '') !== editingEnd) payload.endDate = formData.endDate || undefined;
+
+      const editingAmountCents = Math.round(editing.originalAmount * 100);
+      const moneyChanged =
+        formData.currency !== editing.originalCurrency ||
+        (Number.isFinite(amountCents) && amountCents !== editingAmountCents);
+
+      if (moneyChanged) {
+        payload.amount = amountNumber;
+        payload.currency = formData.currency;
+      }
+    }
 
     try {
       const url = editing ? `/api/savings/${editing.id}` : '/api/savings';
       const method = editing ? 'PATCH' : 'POST';
+
+      if (editing && Object.keys(payload).length === 0) {
+        setDialogOpen(false);
+        resetForm();
+        return;
+      }
 
       const res = await fetch(url, {
         method,
@@ -426,6 +538,396 @@ export default function SavingsPage() {
         </div>
       </div>
 
+      {targets.length > 0 && (
+        <div className="rounded-lg border bg-card text-card-foreground p-6 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-lg font-semibold">Savings Targets</div>
+            <div className="flex items-center gap-2">
+              <div className="w-56">
+                <Select value={targetsMonth} onValueChange={setTargetsMonth}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select month" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {monthOptions().map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Dialog open={contribDialogOpen} onOpenChange={setContribDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" onClick={() => {
+                    setContribData((p) => ({ ...p, currency: baseCurrency, savingsTargetId: '__none__' }));
+                  }}>
+                    Add contribution
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Add savings contribution</DialogTitle>
+                    <DialogDescription>
+                      Record an actual amount you moved into savings. Assign it to a target to track progress.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      try {
+                        await fetch('/api/savings-transactions', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            description: contribData.description,
+                            amount: parseFloat(contribData.amount),
+                            currency: contribData.currency,
+                            transactionDate: contribData.transactionDate,
+                            savingsTargetId: contribData.savingsTargetId === '__none__' ? undefined : contribData.savingsTargetId,
+                          }),
+                        });
+                        await fetchTargets();
+                        setContribDialogOpen(false);
+                        setContribData({
+                          description: '',
+                          amount: '',
+                          currency: baseCurrency,
+                          transactionDate: new Date().toISOString().slice(0, 10),
+                          savingsTargetId: '__none__',
+                        });
+                      } catch {
+                        // ignore
+                      }
+                    }}
+                  >
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="contrib-desc">Description</Label>
+                        <Input
+                          id="contrib-desc"
+                          value={contribData.description}
+                          onChange={(e) => setContribData({ ...contribData, description: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="contrib-amount">Amount</Label>
+                          <Input
+                            id="contrib-amount"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={contribData.amount}
+                            onChange={(e) => setContribData({ ...contribData, amount: e.target.value })}
+                            required
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="contrib-currency">Currency</Label>
+                          <Select value={contribData.currency} onValueChange={(v) => setContribData({ ...contribData, currency: v as CurrencyCode })}>
+                            <SelectTrigger id="contrib-currency">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {currencies.map((c) => (
+                                <SelectItem key={c} value={c}>
+                                  {c}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="contrib-date">Date</Label>
+                          <Input
+                            id="contrib-date"
+                            type="date"
+                            value={contribData.transactionDate}
+                            onChange={(e) => setContribData({ ...contribData, transactionDate: e.target.value })}
+                            required
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="contrib-target">Target (optional)</Label>
+                          <Select value={contribData.savingsTargetId} onValueChange={(v) => setContribData({ ...contribData, savingsTargetId: v })}>
+                            <SelectTrigger id="contrib-target">
+                              <SelectValue placeholder="None" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__none__">None</SelectItem>
+                              {targets.map((t) => (
+                                <SelectItem key={t.id} value={t.id}>
+                                  {t.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button type="button" variant="outline" onClick={() => setContribDialogOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button type="submit">Add</Button>
+                    </DialogFooter>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {targets.map((t) => (
+              <div key={t.id} className="rounded-lg border p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="font-medium">{t.name}</div>
+                  {t.status ? (
+                    <Badge variant={t.status === 'on_track' ? 'success' : 'warning'}>
+                      {t.status === 'on_track' ? 'On track' : 'Behind'}
+                    </Badge>
+                  ) : null}
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  Target: {formatCurrency(t.targetAmount, baseCurrency)} by {formatISODate(t.targetDate)}
+                </div>
+
+                <div className="mt-3 space-y-2">
+                  <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                    <div>
+                      <div>Actual to date</div>
+                      <div className="font-semibold text-foreground tabular-nums">
+                        {formatCurrency(n(t.actualToDate), baseCurrency)}
+                      </div>
+                    </div>
+                    <div>
+                      <div>Expected to date</div>
+                      <div className="font-semibold text-foreground tabular-nums">
+                        {formatCurrency(n(t.expectedToDate), baseCurrency)}
+                      </div>
+                    </div>
+                    <div>
+                      <div>Planned to date</div>
+                      <div className="font-semibold text-foreground tabular-nums">
+                        {formatCurrency(n(t.plannedToDate), baseCurrency)}
+                      </div>
+                    </div>
+                    <div>
+                      <div>Planned total</div>
+                      <div className="font-semibold text-foreground tabular-nums">
+                        {formatCurrency(n(t.plannedTotal), baseCurrency)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>Actual progress</span>
+                      <span>{(n(t.percentActualToDate)).toFixed(0)}%</span>
+                    </div>
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full bg-emerald-600"
+                        style={{ width: `${Math.min(100, Math.max(0, n(t.percentActualToDate)))}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-xs text-muted-foreground">
+                  Start: {formatISODate(t.startDate)} | Factor in existing: {t.factorInExistingPlans ? 'Yes' : 'No'}
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => router.push(`/savings/targets/${t.id}?month=${targetsMonth}`)}
+                  >
+                    View details
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        const res = await fetch(`/api/savings-targets/${t.id}/quick-contribute`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ month: targetsMonth }),
+                        });
+                        if (res.ok) await fetchTargets();
+                      } catch {
+                        // ignore
+                      }
+                    }}
+                  >
+                    Quick add
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setWhatIfTarget(t);
+                      setWhatIfPreview(null);
+                      setWhatIfData({
+                        targetAmount: String(t.targetAmount),
+                        currency: baseCurrency,
+                        startDate: t.startDate.split('T')[0],
+                        targetDate: t.targetDate.split('T')[0],
+                        factorInExistingPlans: t.factorInExistingPlans,
+                      });
+                      setWhatIfDialogOpen(true);
+                    }}
+                  >
+                    What-if
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <Dialog open={whatIfDialogOpen} onOpenChange={setWhatIfDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>What-if planner</DialogTitle>
+            <DialogDescription>
+              Preview the monthly schedule needed to hit this target without creating anything.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!whatIfTarget) return;
+              setWhatIfLoading(true);
+              try {
+                const res = await fetch('/api/savings/goals', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    goalName: whatIfTarget.name,
+                    targetAmount: parseFloat(whatIfData.targetAmount),
+                    currency: whatIfData.currency,
+                    startDate: whatIfData.startDate,
+                    targetDate: whatIfData.targetDate,
+                    factorInExistingPlans: whatIfData.factorInExistingPlans,
+                    dryRun: true,
+                  }),
+                });
+                if (res.ok) {
+                  const data = await res.json();
+                  setWhatIfPreview(data.schedule ?? []);
+                }
+              } finally {
+                setWhatIfLoading(false);
+              }
+            }}
+          >
+            <div className="space-y-4 py-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="wif-amount">Target amount</Label>
+                  <Input
+                    id="wif-amount"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={whatIfData.targetAmount}
+                    onChange={(e) => setWhatIfData({ ...whatIfData, targetAmount: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="wif-currency">Currency</Label>
+                  <Select value={whatIfData.currency} onValueChange={(v) => setWhatIfData({ ...whatIfData, currency: v as CurrencyCode })}>
+                    <SelectTrigger id="wif-currency">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {currencies.map((c) => (
+                        <SelectItem key={c} value={c}>
+                          {c}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="wif-start">Start date</Label>
+                  <Input
+                    id="wif-start"
+                    type="date"
+                    value={whatIfData.startDate}
+                    onChange={(e) => setWhatIfData({ ...whatIfData, startDate: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="wif-target">Target date</Label>
+                  <Input
+                    id="wif-target"
+                    type="date"
+                    value={whatIfData.targetDate}
+                    onChange={(e) => setWhatIfData({ ...whatIfData, targetDate: e.target.value })}
+                    required
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  id="wif-factor"
+                  type="checkbox"
+                  checked={whatIfData.factorInExistingPlans}
+                  onChange={(e) => setWhatIfData({ ...whatIfData, factorInExistingPlans: e.target.checked })}
+                />
+                <Label htmlFor="wif-factor">Factor in existing savings plans</Label>
+              </div>
+
+              {whatIfPreview && (
+                <div className="rounded-lg border p-3 space-y-2">
+                  <div className="text-sm font-medium">Preview</div>
+                  <div className="max-h-56 overflow-auto rounded border">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/30">
+                        <tr className="border-b">
+                          <th className="h-9 px-3 text-left text-xs font-semibold uppercase tracking-wide">Month</th>
+                          <th className="h-9 px-3 text-right text-xs font-semibold uppercase tracking-wide">Planned</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {whatIfPreview.map((r) => (
+                          <tr key={r.month} className="border-b last:border-0">
+                            <td className="px-3 py-2.5">{r.month}</td>
+                            <td className="px-3 py-2.5 text-right tabular-nums">{formatCurrency(r.plannedBaseAmount, baseCurrency)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setWhatIfDialogOpen(false)}>
+                Close
+              </Button>
+              <Button type="submit" disabled={whatIfLoading}>
+                {whatIfLoading ? 'Working…' : 'Preview'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       {plans.length === 0 ? (
         <div className="rounded-lg border border-dashed p-8 text-center">
           <p className="text-muted-foreground">No savings plans yet. Add your first one!</p>
@@ -458,8 +960,8 @@ export default function SavingsPage() {
                     </div>
                   </TableCell>
                   <TableCell className="capitalize">{plan.frequency}</TableCell>
-                  <TableCell>{new Date(plan.startDate).toLocaleDateString()}</TableCell>
-                  <TableCell>{plan.endDate ? new Date(plan.endDate).toLocaleDateString() : 'Ongoing'}</TableCell>
+                  <TableCell>{formatISODate(plan.startDate)}</TableCell>
+                  <TableCell>{plan.endDate ? formatISODate(plan.endDate) : 'Ongoing'}</TableCell>
                   <TableCell className="text-right">
                     <Button variant="ghost" size="sm" className="mr-2" onClick={() => handleEdit(plan)}>
                       Edit

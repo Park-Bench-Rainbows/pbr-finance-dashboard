@@ -19,8 +19,8 @@ export interface SavingsPlan {
   frequency: SavingsFrequency;
   startDate: Date;
   endDate?: Date;
+  savingsTargetId?: string;
 
   createdAt: Date;
   updatedAt: Date;
 }
-

@@ -42,6 +42,16 @@ function monthRange(month: string): { start: string; end: string } {
 }
 
 export class DailyExpenseRepository {
+  async findForDate(userId: string, dateISO: string): Promise<DailyExpense[]> {
+    const rows = await db
+      .select()
+      .from(dailyExpenses)
+      .where(and(eq(dailyExpenses.userId, userId), eq(dailyExpenses.purchaseDate, dateISO)))
+      .orderBy(dailyExpenses.createdAt);
+
+    return rows.map((r) => this.toDomain(r));
+  }
+
   async findForMonth(userId: string, month: string): Promise<DailyExpense[]> {
     const { start, end } = monthRange(month);
     const rows = await db
@@ -133,4 +143,3 @@ export class DailyExpenseRepository {
     };
   }
 }
-

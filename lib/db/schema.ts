@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, date, timestamp, numeric, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, integer, date, timestamp, numeric, uniqueIndex, boolean } from 'drizzle-orm/pg-core';
 
 export const supportedCurrencies = ['TTD', 'USD', 'CAD'] as const;
 export type CurrencyCode = (typeof supportedCurrencies)[number];
@@ -84,6 +84,30 @@ export const savingsPlans = pgTable('savings_plans', {
   frequency: text('frequency', { enum: ['monthly', 'biweekly'] }).notNull(),
   startDate: date('start_date').notNull(),
   endDate: date('end_date'),
+  savingsTargetId: uuid('savings_target_id').references(() => savingsTargets.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const budgets = pgTable('budgets', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  category: text('category', { enum: ['food', 'gas', 'coffee', 'groceries', 'dining', 'transport', 'other'] }).notNull(),
+  monthlyLimitCents: integer('monthly_limit_cents').notNull(),
+  effectiveMonth: date('effective_month').notNull(), // YYYY-MM-01
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const savingsTargets = pgTable('savings_targets', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  baseCurrency: text('base_currency', { enum: supportedCurrencies }).notNull(),
+  targetBaseCents: integer('target_base_cents').notNull(),
+  startDate: date('start_date').notNull(),
+  targetDate: date('target_date').notNull(),
+  factorInExistingPlans: boolean('factor_in_existing_plans').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
@@ -94,6 +118,23 @@ export const dailyExpenses = pgTable('daily_expenses', {
   description: text('description').notNull(),
   category: text('category', { enum: ['food', 'gas', 'coffee', 'groceries', 'dining', 'transport', 'other'] }).notNull(),
   purchaseDate: date('purchase_date').notNull(),
+  originalCurrency: text('original_currency', { enum: supportedCurrencies }).notNull(),
+  originalAmountCents: integer('original_amount_cents').notNull(),
+  baseCurrency: text('base_currency', { enum: supportedCurrencies }).notNull(),
+  baseAmountCents: integer('base_amount_cents').notNull(),
+  fxRate: numeric('fx_rate', { precision: 18, scale: 8 }).notNull(),
+  fxAsOf: timestamp('fx_as_of', { withTimezone: true }).notNull(),
+  fxSource: text('fx_source').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const savingsTransactions = pgTable('savings_transactions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  savingsTargetId: uuid('savings_target_id').references(() => savingsTargets.id, { onDelete: 'set null' }),
+  description: text('description').notNull(),
+  transactionDate: date('transaction_date').notNull(),
   originalCurrency: text('original_currency', { enum: supportedCurrencies }).notNull(),
   originalAmountCents: integer('original_amount_cents').notNull(),
   baseCurrency: text('base_currency', { enum: supportedCurrencies }).notNull(),

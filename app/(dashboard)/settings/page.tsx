@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { BrandMark } from '@/components/brand/brand-mark';
 
 type CurrencyCode = 'TTD' | 'USD' | 'CAD';
 type ThemeMode = 'light' | 'dark' | 'system';
@@ -76,65 +78,90 @@ export default function SettingsPage() {
     }
   };
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) return <div className="text-sm text-muted-foreground">Loading settings…</div>;
 
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <h1 className="text-3xl font-bold">Settings</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">Settings</h1>
         <p className="text-sm text-muted-foreground">
           Choose your base currency. All dashboard totals and summaries use your base currency.
         </p>
       </div>
 
-      <div className="rounded-lg border bg-card text-card-foreground p-6 space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="baseCurrency">Base currency</Label>
-          <Select value={baseCurrency} onValueChange={(v) => setBaseCurrency(v as CurrencyCode)}>
-            <SelectTrigger id="baseCurrency" className="max-w-md">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {currencies.map((c) => (
-                <SelectItem key={c.value} value={c.value}>
-                  {c.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-muted-foreground">
-            Current selection: {baseCurrencyLabel}
-          </p>
-        </div>
+      <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+        <Card>
+          <CardHeader>
+            <CardTitle>Preferences</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-2">
+              <Label htmlFor="baseCurrency">Base currency</Label>
+              <Select value={baseCurrency} onValueChange={(v) => setBaseCurrency(v as CurrencyCode)}>
+                <SelectTrigger id="baseCurrency" className="max-w-md">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {currencies.map((c) => (
+                    <SelectItem key={c.value} value={c.value}>
+                      {c.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Current selection: {baseCurrencyLabel}
+              </p>
+            </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="theme">Theme</Label>
-          <Select value={theme} onValueChange={(v) => setTheme(v as ThemeMode)}>
-            <SelectTrigger id="theme" className="max-w-md">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="light">Light</SelectItem>
-              <SelectItem value="dark">Dark</SelectItem>
-              <SelectItem value="system">System</SelectItem>
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-muted-foreground">
-            System uses your device preference.
-          </p>
-        </div>
+            <div className="space-y-2">
+              <Label htmlFor="theme">Theme</Label>
+              <Select value={theme} onValueChange={(v) => setTheme(v as ThemeMode)}>
+                <SelectTrigger id="theme" className="max-w-md">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="light">Light</SelectItem>
+                  <SelectItem value="dark">Dark</SelectItem>
+                  <SelectItem value="system">System</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                System uses your device preference.
+              </p>
+            </div>
 
-        {error && (
-          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
-          </div>
-        )}
+            {error && (
+              <div className="rounded-lg border border-red-200/70 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {error}
+              </div>
+            )}
 
-        <div className="flex items-center gap-3">
-          <Button onClick={handleSave} disabled={saving || !settings}>
-            {saving ? 'Saving...' : 'Save'}
-          </Button>
-        </div>
+            <div className="flex items-center gap-3">
+              <Button onClick={handleSave} disabled={saving || !settings} variant="brand">
+                {saving ? 'Saving...' : 'Save'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>About</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center gap-3">
+              <BrandMark className="h-6 w-6" />
+              <div className="leading-tight">
+                <div className="text-sm font-semibold text-foreground">Park Bench Rainbows</div>
+                <div className="text-xs text-muted-foreground">Built within the ecosystem</div>
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              A calm, professional finance experience with a subtle creative identity.
+            </p>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

@@ -1,35 +1,41 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import { BrandMark } from '@/components/brand/brand-mark';
 
 export default function Home() {
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="border-b bg-white">
+      <header className="border-b bg-background/60 backdrop-blur supports-[backdrop-filter]:bg-background/40">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <div className="text-xl font-bold text-gray-900">Finance Dashboard</div>
+          <div className="flex items-center gap-3">
+            <BrandMark className="h-5 w-5" />
+            <div className="text-[15px] font-semibold tracking-tight text-foreground">
+              Finance Dashboard
+            </div>
+          </div>
           <div className="flex space-x-4">
             <Link href="/login">
               <Button variant="ghost">Login</Button>
             </Link>
             <Link href="/signup">
-              <Button>Get Started</Button>
+              <Button variant="brand">Get Started</Button>
             </Link>
           </div>
         </div>
       </header>
 
-      <main className="flex flex-1 flex-col items-center justify-center bg-gray-50 px-4 py-16">
+      <main className="flex flex-1 flex-col items-center justify-center bg-background px-4 py-16">
         <div className="mx-auto max-w-3xl text-center">
-          <h1 className="text-5xl font-bold tracking-tight text-gray-900 sm:text-6xl">
+          <h1 className="text-5xl font-semibold tracking-tight text-foreground sm:text-6xl">
             Take Control of Your Finances
           </h1>
-          <p className="mt-6 text-lg leading-8 text-gray-600">
+          <p className="mt-6 text-lg leading-8 text-muted-foreground">
             Track your income, manage recurring expenses, and visualize your monthly financial
             summary. Replace your spreadsheets with a simple, powerful dashboard.
           </p>
           <div className="mt-10 flex items-center justify-center gap-x-6">
             <Link href="/signup">
-              <Button size="lg">Get Started</Button>
+              <Button size="lg" variant="brand">Get Started</Button>
             </Link>
             <Link href="/login">
               <Button variant="outline" size="lg">
@@ -41,10 +47,10 @@ export default function Home() {
 
         <div className="mx-auto mt-16 max-w-5xl">
           <div className="grid gap-8 md:grid-cols-3">
-            <div className="rounded-lg border bg-white p-6 shadow-sm">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-blue-100">
+            <div className="rounded-xl border bg-card p-6 shadow-sm shadow-black/5 dark:shadow-black/20">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-background">
                 <svg
-                  className="h-6 w-6 text-blue-600"
+                  className="h-6 w-6 text-[color:var(--pbr-blue)]"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -57,16 +63,16 @@ export default function Home() {
                   />
                 </svg>
               </div>
-              <h3 className="mb-2 text-lg font-semibold text-gray-900">Track Income</h3>
-              <p className="text-gray-600">
+              <h3 className="mb-2 text-lg font-semibold text-foreground">Track Income</h3>
+              <p className="text-muted-foreground">
                 Add monthly and bi-weekly income sources. See your total income at a glance.
               </p>
             </div>
 
-            <div className="rounded-lg border bg-white p-6 shadow-sm">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-green-100">
+            <div className="rounded-xl border bg-card p-6 shadow-sm shadow-black/5 dark:shadow-black/20">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-background">
                 <svg
-                  className="h-6 w-6 text-green-600"
+                  className="h-6 w-6 text-primary"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -79,16 +85,16 @@ export default function Home() {
                   />
                 </svg>
               </div>
-              <h3 className="mb-2 text-lg font-semibold text-gray-900">Manage Expenses</h3>
-              <p className="text-gray-600">
+              <h3 className="mb-2 text-lg font-semibold text-foreground">Manage Expenses</h3>
+              <p className="text-muted-foreground">
                 Organize recurring expenses by category. Track monthly and annual bills.
               </p>
             </div>
 
-            <div className="rounded-lg border bg-white p-6 shadow-sm">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-purple-100">
+            <div className="rounded-xl border bg-card p-6 shadow-sm shadow-black/5 dark:shadow-black/20">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-background">
                 <svg
-                  className="h-6 w-6 text-purple-600"
+                  className="h-6 w-6 text-[color:var(--pbr-purple)]"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -101,8 +107,8 @@ export default function Home() {
                   />
                 </svg>
               </div>
-              <h3 className="mb-2 text-lg font-semibold text-gray-900">Visualize Data</h3>
-              <p className="text-gray-600">
+              <h3 className="mb-2 text-lg font-semibold text-foreground">Visualize Data</h3>
+              <p className="text-muted-foreground">
                 See your financial summary with charts. Know your disposable income instantly.
               </p>
             </div>
@@ -110,9 +116,9 @@ export default function Home() {
         </div>
       </main>
 
-      <footer className="border-t bg-white">
-        <div className="mx-auto max-w-7xl px-4 py-8 text-center text-sm text-gray-600 sm:px-6 lg:px-8">
-          <p>© 2026 Finance Dashboard. Built to replace Excel.</p>
+      <footer className="border-t bg-background/60">
+        <div className="mx-auto max-w-7xl px-4 py-8 text-center text-sm text-muted-foreground sm:px-6 lg:px-8">
+          <p className="text-muted-foreground">© 2026 Finance Dashboard.</p>
         </div>
       </footer>
     </div>

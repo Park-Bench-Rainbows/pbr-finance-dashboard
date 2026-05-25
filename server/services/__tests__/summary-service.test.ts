@@ -6,6 +6,7 @@ import { IncomeRepository } from '../../repositories/income-repository';
 import { ExpenseRepository } from '../../repositories/expense-repository';
 import { SavingsPlanService } from '../savings-plan-service';
 import { DailyExpenseService } from '../daily-expense-service';
+import { BudgetService } from '../budget-service';
 
 describe('SummaryService', () => {
   let service: SummaryService;
@@ -13,6 +14,7 @@ describe('SummaryService', () => {
   let mockExpenseRepo: ExpenseRepository;
   let mockSavingsService: SavingsPlanService;
   let mockDailyExpenseService: DailyExpenseService;
+  let mockBudgetService: BudgetService;
   const userId = 'test-user-123';
   const month = '2026-01';
 
@@ -36,7 +38,18 @@ describe('SummaryService', () => {
       groupByDay: vi.fn().mockResolvedValue([]),
     } as any;
 
-    service = new SummaryService(mockIncomeRepo, mockExpenseRepo, mockSavingsService, mockDailyExpenseService);
+    mockBudgetService = {
+      getBudgetsForMonth: vi.fn().mockResolvedValue([]),
+      computeRemainingByCategory: vi.fn().mockResolvedValue({}),
+    } as any;
+
+    service = new SummaryService(
+      mockIncomeRepo,
+      mockExpenseRepo,
+      mockSavingsService,
+      mockDailyExpenseService,
+      mockBudgetService
+    );
   });
 
   describe('getMonthlySummary', () => {
@@ -53,6 +66,8 @@ describe('SummaryService', () => {
       expect(summary.expensesByCategory).toEqual({});
       expect(summary.dailySpendByCategory).toEqual({});
       expect(summary.dailySpendByDay).toEqual([]);
+      expect(summary.budgetsByCategory).toEqual({});
+      expect(summary.budgetRemainingByCategory).toEqual({});
     });
 
     it('should calculate monthly income correctly', async () => {
