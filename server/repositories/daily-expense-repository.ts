@@ -1,6 +1,6 @@
 import { db } from '@/lib/db';
 import { dailyExpenses } from '@/lib/db/schema';
-import { and, eq, gte, lte } from 'drizzle-orm';
+import { and, desc, eq, gte, lte } from 'drizzle-orm';
 import { DailyExpense, DailyExpenseCategory } from '../domain/daily-expense';
 
 export interface CreateDailyExpenseDTO {
@@ -61,6 +61,27 @@ export class DailyExpenseRepository {
       .orderBy(dailyExpenses.purchaseDate);
 
     return rows.map((r : any) => this.toDomain(r));
+  }
+
+  async findForRange(userId: string, startISO: string, endISO: string): Promise<DailyExpense[]> {
+    const rows = await db
+      .select()
+      .from(dailyExpenses)
+      .where(and(eq(dailyExpenses.userId, userId), gte(dailyExpenses.purchaseDate, startISO), lte(dailyExpenses.purchaseDate, endISO)))
+      .orderBy(dailyExpenses.purchaseDate);
+
+    return rows.map((r: any) => this.toDomain(r));
+  }
+
+  async findLatest(userId: string, limit: number): Promise<DailyExpense[]> {
+    const rows = await db
+      .select()
+      .from(dailyExpenses)
+      .where(eq(dailyExpenses.userId, userId))
+      .orderBy(desc(dailyExpenses.purchaseDate), desc(dailyExpenses.createdAt))
+      .limit(limit);
+
+    return rows.map((r: any) => this.toDomain(r));
   }
 
   async findByUserId(userId: string): Promise<DailyExpense[]> {

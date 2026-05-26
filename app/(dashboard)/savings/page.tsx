@@ -1,46 +1,23 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import type { ColumnDef } from '@tanstack/react-table';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { CircleDollarSign, Eye, Pencil, Plus, Save, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { DataTable, DataTableColumnHeader } from '@/components/ui/data-table';
+import { TableActionButton } from '@/components/ui/table-action-button';
+import { MobileRowCard } from '@/components/ui/mobile-row-card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PageLoading } from '@/components/ui/page-loading';
-
-type CurrencyCode = 'TTD' | 'USD' | 'CAD';
-
-interface SavingsPlan {
-  id: string;
-  name: string;
-  amount: number; // base currency dollars
-  baseCurrency: CurrencyCode;
-  originalAmount: number;
-  originalCurrency: CurrencyCode;
-  frequency: 'monthly' | 'biweekly';
-  startDate: string;
-  endDate?: string;
-}
-
-interface SavingsTarget {
-  id: string;
-  name: string;
-  baseCurrency: CurrencyCode;
-  targetAmount: number;
-  startDate: string;
-  targetDate: string;
-  factorInExistingPlans: boolean;
-  plannedToDate?: number;
-  plannedTotal?: number;
-  percentPlannedToDate?: number;
-  expectedToDate?: number;
-  actualToDate?: number;
-  percentActualToDate?: number;
-  status?: 'on_track' | 'behind';
-}
+import { api, type CurrencyCode, type SavingsPlan, type SavingsPlanPayload, type SavingsTarget } from '@/lib/api-client';
+import { queryKeys } from '@/lib/query-keys';
 
 const currencies: CurrencyCode[] = ['TTD', 'USD', 'CAD'];
 
@@ -55,6 +32,11 @@ const formatISODate = (value: string) => {
 const n = (value: unknown): number => {
   const num = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(num) ? num : 0;
+};
+
+const clamp01 = (value: number) => {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
 };
 
 function currentMonth(): string {
@@ -76,13 +58,10 @@ function monthOptions() {
 
 export default function SavingsPage() {
   const router = useRouter();
-  const [plans, setPlans] = useState<SavingsPlan[]>([]);
-  const [targets, setTargets] = useState<SavingsTarget[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [goalDialogOpen, setGoalDialogOpen] = useState(false);
   const [editing, setEditing] = useState<SavingsPlan | null>(null);
-  const [baseCurrency, setBaseCurrency] = useState<CurrencyCode>('TTD');
   const [targetsMonth, setTargetsMonth] = useState(currentMonth());
   const [contribDialogOpen, setContribDialogOpen] = useState(false);
   const [contribData, setContribData] = useState({
@@ -92,17 +71,6 @@ export default function SavingsPage() {
     transactionDate: new Date().toISOString().slice(0, 10),
     savingsTargetId: '__none__' as string,
   });
-  const [whatIfTarget, setWhatIfTarget] = useState<SavingsTarget | null>(null);
-  const [whatIfDialogOpen, setWhatIfDialogOpen] = useState(false);
-  const [whatIfData, setWhatIfData] = useState({
-    targetAmount: '',
-    currency: 'TTD' as CurrencyCode,
-    startDate: '',
-    targetDate: '',
-    factorInExistingPlans: false,
-  });
-  const [whatIfPreview, setWhatIfPreview] = useState<{ month: string; plannedBaseAmount: number }[] | null>(null);
-  const [whatIfLoading, setWhatIfLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     amount: '',
@@ -120,57 +88,104 @@ export default function SavingsPage() {
     factorInExistingPlans: false,
   });
   const [goalPreview, setGoalPreview] = useState<{ month: string; plannedBaseAmount: number }[] | null>(null);
-  const [goalLoading, setGoalLoading] = useState(false);
 
-  useEffect(() => {
-    load();
-  }, []);
+  const settingsQuery = useQuery({ queryKey: queryKeys.settings, queryFn: api.settings });
+  const plansQuery = useQuery({ queryKey: queryKeys.savingsPlans, queryFn: api.savingsPlans });
+  const targetsQuery = useQuery({ queryKey: queryKeys.savingsTargets(targetsMonth), queryFn: () => api.savingsTargets(targetsMonth) });
+  const baseCurrency = settingsQuery.data?.baseCurrency ?? 'TTD';
+  const plans = plansQuery.data ?? [];
+  const targets = targetsQuery.data ?? [];
 
-  const load = async () => {
-    await Promise.all([fetchSettings(), fetchPlans(), fetchTargets()]);
-  };
+  const focusedTargets = useMemo(() => {
+    return [...targets]
+      .sort((a, b) => {
+        const aBehind = a.status === 'behind' ? 1 : 0;
+        const bBehind = b.status === 'behind' ? 1 : 0;
+        if (aBehind !== bBehind) return bBehind - aBehind;
+        const aDue = new Date(a.targetDate).getTime();
+        const bDue = new Date(b.targetDate).getTime();
+        if (aDue !== bDue) return aDue - bDue;
+        return a.name.localeCompare(b.name);
+      })
+      .slice(0, 3);
+  }, [targets]);
 
-  const fetchSettings = async () => {
-    try {
-      const res = await fetch('/api/settings');
-      if (!res.ok) return;
-      const settings = await res.json();
-      setBaseCurrency(settings.baseCurrency as CurrencyCode);
-      setFormData((p) => ({ ...p, currency: settings.baseCurrency as CurrencyCode }));
-      setGoalData((p) => ({ ...p, currency: settings.baseCurrency as CurrencyCode }));
-    } catch {
-      // ignore
-    }
-  };
+  const savePlanMutation = useMutation({
+    mutationFn: ({ id, payload }: { id?: string; payload: Partial<SavingsPlanPayload> }) =>
+      id ? api.updateSavingsPlan(id, payload) : api.createSavingsPlan(payload as SavingsPlanPayload),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.savingsPlans });
+      await queryClient.invalidateQueries({ queryKey: ['summary'] });
+      setDialogOpen(false);
+      resetForm();
+    },
+  });
 
-  const fetchPlans = async () => {
-    try {
-      const res = await fetch('/api/savings');
-      if (res.ok) {
-        setPlans(await res.json());
+  const deletePlanMutation = useMutation({
+    mutationFn: (id: string) => api.deleteSavingsPlan(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.savingsPlans });
+      await queryClient.invalidateQueries({ queryKey: ['summary'] });
+    },
+  });
+
+  const goalMutation = useMutation({
+    mutationFn: ({ dryRun }: { dryRun: boolean }) =>
+      api.savingsGoal({
+        ...goalData,
+        targetAmount: parseFloat(goalData.targetAmount),
+        dryRun,
+      }),
+    onSuccess: async (data, variables) => {
+      if (variables.dryRun) {
+        setGoalPreview(data.schedule ?? []);
+        return;
       }
-    } catch (e) {
-      console.error('Error fetching savings plans:', e);
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  const fetchTargets = async () => {
-    try {
-      const res = await fetch(`/api/savings-targets?month=${targetsMonth}`);
-      if (res.ok) {
-        setTargets(await res.json());
-      }
-    } catch (e) {
-      console.error('Error fetching savings targets:', e);
-    }
-  };
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.savingsPlans }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.savingsTargets(targetsMonth) }),
+        queryClient.invalidateQueries({ queryKey: ['summary'] }),
+      ]);
+      setGoalDialogOpen(false);
+      resetGoal();
+    },
+  });
 
-  useEffect(() => {
-    fetchTargets();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetsMonth]);
+  const contributionMutation = useMutation({
+    mutationFn: () =>
+      api.createSavingsTransaction({
+        description: contribData.description,
+        amount: parseFloat(contribData.amount),
+        currency: contribData.currency,
+        transactionDate: contribData.transactionDate,
+        savingsTargetId: contribData.savingsTargetId === '__none__' ? undefined : contribData.savingsTargetId,
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.savingsTargets(targetsMonth) }),
+        queryClient.invalidateQueries({ queryKey: ['savings-transactions'] }),
+      ]);
+      setContribDialogOpen(false);
+      setContribData({
+        description: '',
+        amount: '',
+        currency: baseCurrency,
+        transactionDate: new Date().toISOString().slice(0, 10),
+        savingsTargetId: '__none__',
+      });
+    },
+  });
+
+  const quickAddTargetMutation = useMutation({
+    mutationFn: (id: string) => api.quickContributeSavingsTarget(id, targetsMonth),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.savingsTargets(targetsMonth) }),
+        queryClient.invalidateQueries({ queryKey: ['savings-transactions'] }),
+      ]);
+    },
+  });
 
   const resetForm = () => {
     setEditing(null);
@@ -211,13 +226,7 @@ export default function SavingsPage() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this savings plan?')) return;
-
-    try {
-      const res = await fetch(`/api/savings/${id}`, { method: 'DELETE' });
-      if (res.ok) fetchPlans();
-    } catch (e) {
-      console.error('Error deleting savings plan:', e);
-    }
+    deletePlanMutation.mutate(id);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -226,7 +235,7 @@ export default function SavingsPage() {
     const amountNumber = parseFloat(formData.amount);
     const amountCents = Number.isFinite(amountNumber) ? Math.round(amountNumber * 100) : NaN;
 
-    const payload: Record<string, unknown> = {};
+    const payload: Partial<SavingsPlanPayload> = {};
 
     if (!editing) {
       payload.name = formData.name;
@@ -254,46 +263,91 @@ export default function SavingsPage() {
       }
     }
 
-    try {
-      const url = editing ? `/api/savings/${editing.id}` : '/api/savings';
-      const method = editing ? 'PATCH' : 'POST';
-
-      if (editing && Object.keys(payload).length === 0) {
-        setDialogOpen(false);
-        resetForm();
-        return;
-      }
-
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (res.ok) {
-        await fetchPlans();
-        setDialogOpen(false);
-        resetForm();
-      }
-    } catch (err) {
-      console.error('Error saving savings plan:', err);
+    if (editing && Object.keys(payload).length === 0) {
+      setDialogOpen(false);
+      resetForm();
+      return;
     }
+
+    savePlanMutation.mutate({ id: editing?.id, payload });
   };
 
-  if (loading) return <div>Loading...</div>;
+  const planColumns = useMemo<ColumnDef<SavingsPlan>[]>(
+    () => [
+      {
+        accessorKey: 'name',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Name" />,
+        cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
+      },
+      {
+        accessorKey: 'amount',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Amount" />,
+        cell: ({ row }) => (
+          <div className="flex flex-col">
+            <span>{formatCurrency(row.original.amount, baseCurrency)}</span>
+            {row.original.originalCurrency !== baseCurrency && (
+              <span className="text-xs text-muted-foreground">
+                Entered {formatCurrency(row.original.originalAmount, row.original.originalCurrency)}
+              </span>
+            )}
+          </div>
+        ),
+      },
+      {
+        accessorKey: 'frequency',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Frequency" />,
+        cell: ({ row }) => <span className="capitalize">{row.original.frequency}</span>,
+      },
+      {
+        accessorKey: 'startDate',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Start Date" />,
+        cell: ({ row }) => formatISODate(row.original.startDate),
+      },
+      {
+        accessorKey: 'endDate',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="End Date" />,
+        cell: ({ row }) => (row.original.endDate ? formatISODate(row.original.endDate) : 'Ongoing'),
+      },
+      {
+        id: 'actions',
+        header: () => <div className="text-right">Actions</div>,
+        enableSorting: false,
+        cell: ({ row }) => (
+          <div className="flex justify-end gap-1">
+            <TableActionButton
+              label={`Edit ${row.original.name}`}
+              icon={<Pencil className="h-4 w-4" />}
+              onClick={() => handleEdit(row.original)}
+            />
+            <TableActionButton
+              label={`Delete ${row.original.name}`}
+              icon={<Trash2 className="h-4 w-4" />}
+              destructive
+              onClick={() => handleDelete(row.original.id)}
+              isLoading={deletePlanMutation.isPending && deletePlanMutation.variables === row.original.id}
+            />
+          </div>
+        ),
+      },
+    ],
+    [baseCurrency, deletePlanMutation.isPending, deletePlanMutation.variables]
+  );
 
-  if (loading) {
+  if (plansQuery.isLoading) {
     return <PageLoading variant="table" />;
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-3xl font-bold">Savings Plans</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row">
           <Dialog open={goalDialogOpen} onOpenChange={setGoalDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline" onClick={resetGoal}>Create Goal</Button>
+              <Button variant="outline" onClick={resetGoal}>
+                <Plus className="h-4 w-4" />
+                Create Goal
+              </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
@@ -305,41 +359,7 @@ export default function SavingsPage() {
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();
-                  setGoalLoading(true);
-                  try {
-                    if (!goalPreview && goalData.factorInExistingPlans) {
-                      const res = await fetch('/api/savings/goals', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          ...goalData,
-                          targetAmount: parseFloat(goalData.targetAmount),
-                          dryRun: true,
-                        }),
-                      });
-                      if (res.ok) {
-                        const data = await res.json();
-                        setGoalPreview(data.schedule ?? []);
-                      }
-                      return;
-                    }
-
-                    const res = await fetch('/api/savings/goals', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        ...goalData,
-                        targetAmount: parseFloat(goalData.targetAmount),
-                      }),
-                    });
-                    if (res.ok) {
-                      await fetchPlans();
-                      setGoalDialogOpen(false);
-                      resetGoal();
-                    }
-                  } finally {
-                    setGoalLoading(false);
-                  }
+                  goalMutation.mutate({ dryRun: !goalPreview && goalData.factorInExistingPlans });
                 }}
               >
                 <div className="space-y-4 py-4">
@@ -435,8 +455,9 @@ export default function SavingsPage() {
                   <Button type="button" variant="outline" onClick={() => { setGoalDialogOpen(false); resetGoal(); }}>
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={goalLoading}>
-                    {goalLoading ? 'Working...' : goalPreview && goalData.factorInExistingPlans ? 'Create Plans' : goalData.factorInExistingPlans ? 'Preview' : 'Create Plan'}
+                  <Button type="submit" disabled={goalMutation.isPending}>
+                    {goalData.factorInExistingPlans && !goalPreview ? <Eye className="h-4 w-4" /> : <Save className="h-4 w-4" />}
+                    {goalMutation.isPending ? 'Working...' : goalPreview && goalData.factorInExistingPlans ? 'Create Plans' : goalData.factorInExistingPlans ? 'Preview' : 'Create Plan'}
                   </Button>
                 </DialogFooter>
               </form>
@@ -445,7 +466,10 @@ export default function SavingsPage() {
 
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <Button onClick={resetForm}>Add Savings Plan</Button>
+              <Button onClick={resetForm}>
+                <Plus className="h-4 w-4" />
+                Add Savings Plan
+              </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
@@ -535,7 +559,10 @@ export default function SavingsPage() {
                   <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                     Cancel
                   </Button>
-                  <Button type="submit">{editing ? 'Update' : 'Add'}</Button>
+                  <Button type="submit" disabled={savePlanMutation.isPending}>
+                    <Save className="h-4 w-4" />
+                    {savePlanMutation.isPending ? 'Saving…' : editing ? 'Update' : 'Add'}
+                  </Button>
                 </DialogFooter>
               </form>
             </DialogContent>
@@ -545,10 +572,10 @@ export default function SavingsPage() {
 
       {targets.length > 0 && (
         <div className="rounded-lg border bg-card text-card-foreground p-6 space-y-3">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="text-lg font-semibold">Savings Targets</div>
-            <div className="flex items-center gap-2">
-              <div className="w-56">
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-end">
+              <div className="w-full">
                 <Select value={targetsMonth} onValueChange={setTargetsMonth}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select month" />
@@ -564,9 +591,14 @@ export default function SavingsPage() {
               </div>
               <Dialog open={contribDialogOpen} onOpenChange={setContribDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button variant="outline" onClick={() => {
-                    setContribData((p) => ({ ...p, currency: baseCurrency, savingsTargetId: '__none__' }));
-                  }}>
+                  <Button
+                    variant="outline"
+                    className="w-full sm:w-auto"
+                    onClick={() => {
+                      setContribData((p) => ({ ...p, currency: baseCurrency, savingsTargetId: '__none__' }));
+                    }}
+                  >
+                    <CircleDollarSign className="h-4 w-4" />
                     Add contribution
                   </Button>
                 </DialogTrigger>
@@ -580,30 +612,7 @@ export default function SavingsPage() {
                   <form
                     onSubmit={async (e) => {
                       e.preventDefault();
-                      try {
-                        await fetch('/api/savings-transactions', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            description: contribData.description,
-                            amount: parseFloat(contribData.amount),
-                            currency: contribData.currency,
-                            transactionDate: contribData.transactionDate,
-                            savingsTargetId: contribData.savingsTargetId === '__none__' ? undefined : contribData.savingsTargetId,
-                          }),
-                        });
-                        await fetchTargets();
-                        setContribDialogOpen(false);
-                        setContribData({
-                          description: '',
-                          amount: '',
-                          currency: baseCurrency,
-                          transactionDate: new Date().toISOString().slice(0, 10),
-                          savingsTargetId: '__none__',
-                        });
-                      } catch {
-                        // ignore
-                      }
+                      contributionMutation.mutate();
                     }}
                   >
                     <div className="space-y-4 py-4">
@@ -616,7 +625,7 @@ export default function SavingsPage() {
                           required
                         />
                       </div>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid gap-3 sm:grid-cols-2">
                         <div className="space-y-2">
                           <Label htmlFor="contrib-amount">Amount</Label>
                           <Input
@@ -645,7 +654,7 @@ export default function SavingsPage() {
                           </Select>
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid gap-3 sm:grid-cols-2">
                         <div className="space-y-2">
                           <Label htmlFor="contrib-date">Date</Label>
                           <Input
@@ -678,314 +687,150 @@ export default function SavingsPage() {
                       <Button type="button" variant="outline" onClick={() => setContribDialogOpen(false)}>
                         Cancel
                       </Button>
-                      <Button type="submit">Add</Button>
+                      <Button type="submit" disabled={contributionMutation.isPending}>
+                        <CircleDollarSign className="h-4 w-4" />
+                        {contributionMutation.isPending ? 'Adding…' : 'Add'}
+                      </Button>
                     </DialogFooter>
                   </form>
                 </DialogContent>
               </Dialog>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full sm:w-auto"
+                onClick={() => router.push(`/savings/targets?month=${targetsMonth}`)}
+              >
+                View all
+              </Button>
             </div>
           </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            {targets.map((t) => (
-              <div key={t.id} className="rounded-lg border p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="font-medium">{t.name}</div>
-                  {t.status ? (
-                    <Badge variant={t.status === 'on_track' ? 'success' : 'warning'}>
-                      {t.status === 'on_track' ? 'On track' : 'Behind'}
-                    </Badge>
-                  ) : null}
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  Target: {formatCurrency(t.targetAmount, baseCurrency)} by {formatISODate(t.targetDate)}
-                </div>
+          {/* <div className="flex items-center justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full sm:w-auto"
+              onClick={() => router.push(`/savings/targets?month=${targetsMonth}`)}
+            >
+              View all
+            </Button>
+          </div> */}
 
-                <div className="mt-3 space-y-2">
-                  <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                    <div>
-                      <div>Actual to date</div>
-                      <div className="font-semibold text-foreground tabular-nums">
-                        {formatCurrency(n(t.actualToDate), baseCurrency)}
-                      </div>
-                    </div>
-                    <div>
-                      <div>Expected to date</div>
-                      <div className="font-semibold text-foreground tabular-nums">
-                        {formatCurrency(n(t.expectedToDate), baseCurrency)}
-                      </div>
-                    </div>
-                    <div>
-                      <div>Planned to date</div>
-                      <div className="font-semibold text-foreground tabular-nums">
-                        {formatCurrency(n(t.plannedToDate), baseCurrency)}
-                      </div>
-                    </div>
-                    <div>
-                      <div>Planned total</div>
-                      <div className="font-semibold text-foreground tabular-nums">
-                        {formatCurrency(n(t.plannedTotal), baseCurrency)}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>Actual progress</span>
-                      <span>{(n(t.percentActualToDate)).toFixed(0)}%</span>
-                    </div>
-                    <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                      <div
-                        className="h-full bg-emerald-600"
-                        style={{ width: `${Math.min(100, Math.max(0, n(t.percentActualToDate)))}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="text-xs text-muted-foreground">
-                  Start: {formatISODate(t.startDate)} | Factor in existing: {t.factorInExistingPlans ? 'Yes' : 'No'}
-                </div>
-
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => router.push(`/savings/targets/${t.id}?month=${targetsMonth}`)}
-                  >
-                    View details
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={async () => {
-                      try {
-                        const res = await fetch(`/api/savings-targets/${t.id}/quick-contribute`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ month: targetsMonth }),
-                        });
-                        if (res.ok) await fetchTargets();
-                      } catch {
-                        // ignore
+          {focusedTargets.length ? (
+            <div className="grid gap-3 md:grid-cols-3">
+              {focusedTargets.map((t) => {
+                const percent = clamp01((t.percentActualToDate ?? 0) / 100);
+                const statusLabel = t.status === 'behind' ? 'Behind' : t.status === 'on_track' ? 'On track' : null;
+                return (
+                  <div
+                    key={t.id}
+                    className="group relative cursor-pointer rounded-lg border bg-card p-4 shadow-sm transition-shadow hover:shadow-md focus-within:shadow-md"
+                    role="link"
+                    tabIndex={0}
+                    aria-label={`View details for ${t.name}`}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        router.push(`/savings/targets/${t.id}?month=${targetsMonth}`);
                       }
                     }}
                   >
-                    Quick add
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setWhatIfTarget(t);
-                      setWhatIfPreview(null);
-                      setWhatIfData({
-                        targetAmount: String(t.targetAmount),
-                        currency: baseCurrency,
-                        startDate: t.startDate.split('T')[0],
-                        targetDate: t.targetDate.split('T')[0],
-                        factorInExistingPlans: t.factorInExistingPlans,
-                      });
-                      setWhatIfDialogOpen(true);
-                    }}
-                  >
-                    What-if
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <Dialog open={whatIfDialogOpen} onOpenChange={setWhatIfDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>What-if planner</DialogTitle>
-            <DialogDescription>
-              Preview the monthly schedule needed to hit this target without creating anything.
-            </DialogDescription>
-          </DialogHeader>
-          <form
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (!whatIfTarget) return;
-              setWhatIfLoading(true);
-              try {
-                const res = await fetch('/api/savings/goals', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    goalName: whatIfTarget.name,
-                    targetAmount: parseFloat(whatIfData.targetAmount),
-                    currency: whatIfData.currency,
-                    startDate: whatIfData.startDate,
-                    targetDate: whatIfData.targetDate,
-                    factorInExistingPlans: whatIfData.factorInExistingPlans,
-                    dryRun: true,
-                  }),
-                });
-                if (res.ok) {
-                  const data = await res.json();
-                  setWhatIfPreview(data.schedule ?? []);
-                }
-              } finally {
-                setWhatIfLoading(false);
-              }
-            }}
-          >
-            <div className="space-y-4 py-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="wif-amount">Target amount</Label>
-                  <Input
-                    id="wif-amount"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={whatIfData.targetAmount}
-                    onChange={(e) => setWhatIfData({ ...whatIfData, targetAmount: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="wif-currency">Currency</Label>
-                  <Select value={whatIfData.currency} onValueChange={(v) => setWhatIfData({ ...whatIfData, currency: v as CurrencyCode })}>
-                    <SelectTrigger id="wif-currency">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {currencies.map((c) => (
-                        <SelectItem key={c} value={c}>
-                          {c}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="wif-start">Start date</Label>
-                  <Input
-                    id="wif-start"
-                    type="date"
-                    value={whatIfData.startDate}
-                    onChange={(e) => setWhatIfData({ ...whatIfData, startDate: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="wif-target">Target date</Label>
-                  <Input
-                    id="wif-target"
-                    type="date"
-                    value={whatIfData.targetDate}
-                    onChange={(e) => setWhatIfData({ ...whatIfData, targetDate: e.target.value })}
-                    required
-                  />
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  id="wif-factor"
-                  type="checkbox"
-                  checked={whatIfData.factorInExistingPlans}
-                  onChange={(e) => setWhatIfData({ ...whatIfData, factorInExistingPlans: e.target.checked })}
-                />
-                <Label htmlFor="wif-factor">Factor in existing savings plans</Label>
-              </div>
-
-              {whatIfPreview && (
-                <div className="rounded-lg border p-3 space-y-2">
-                  <div className="text-sm font-medium">Preview</div>
-                  <div className="max-h-56 overflow-auto rounded border">
-                    <table className="w-full text-sm">
-                      <thead className="bg-muted/30">
-                        <tr className="border-b">
-                          <th className="h-9 px-3 text-left text-xs font-semibold uppercase tracking-wide">Month</th>
-                          <th className="h-9 px-3 text-right text-xs font-semibold uppercase tracking-wide">Planned</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {whatIfPreview.map((r) => (
-                          <tr key={r.month} className="border-b last:border-0">
-                            <td className="px-3 py-2.5">{r.month}</td>
-                            <td className="px-3 py-2.5 text-right tabular-nums">{formatCurrency(r.plannedBaseAmount, baseCurrency)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setWhatIfDialogOpen(false)}>
-                Close
-              </Button>
-              <Button type="submit" disabled={whatIfLoading}>
-                {whatIfLoading ? 'Working…' : 'Preview'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {plans.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-8 text-center">
-          <p className="text-muted-foreground">No savings plans yet. Add your first one!</p>
-        </div>
-      ) : (
-        <div className="rounded-lg border bg-card text-card-foreground">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Amount</TableHead>
-                <TableHead>Frequency</TableHead>
-                <TableHead>Start Date</TableHead>
-                <TableHead>End Date</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {plans.map((plan) => (
-                <TableRow key={plan.id}>
-                  <TableCell className="font-medium">{plan.name}</TableCell>
-                  <TableCell>
-                    <div className="flex flex-col">
-                      <span>{formatCurrency(plan.amount, baseCurrency)}</span>
-                      {plan.originalCurrency !== baseCurrency && (
-                        <span className="text-xs text-muted-foreground">
-                          Entered {formatCurrency(plan.originalAmount, plan.originalCurrency)}
-                        </span>
-                      )}
+                    <Link
+                      href={`/savings/targets/${t.id}?month=${targetsMonth}`}
+                      className="absolute inset-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      aria-label={`Open ${t.name}`}
+                    />
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold">{t.name}</div>
+                        <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+                          <span>Due {formatISODate(t.targetDate)}</span>
+                          {t.factorInExistingPlans ? <span className="rounded-md border bg-muted/30 px-1.5 py-0.5">Factors plans</span> : null}
+                        </div>
+                      </div>
+                      {statusLabel ? (
+                        <Badge variant={t.status === 'behind' ? 'warning' : 'info'}>
+                          {statusLabel}
+                        </Badge>
+                      ) : null}
                     </div>
-                  </TableCell>
-                  <TableCell className="capitalize">{plan.frequency}</TableCell>
-                  <TableCell>{formatISODate(plan.startDate)}</TableCell>
-                  <TableCell>{plan.endDate ? formatISODate(plan.endDate) : 'Ongoing'}</TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="sm" className="mr-2" onClick={() => handleEdit(plan)}>
-                      Edit
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-600 hover:text-red-700"
-                      onClick={() => handleDelete(plan.id)}
-                    >
-                      Delete
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+
+                    <div className="mt-3">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>Actual to date</span>
+                        <span className="tabular-nums">{Math.round(percent * 100)}%</span>
+                      </div>
+                      <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-border">
+                        <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${percent * 100}%` }} />
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <div className="text-muted-foreground">Actual</div>
+                          <div className="mt-0.5 font-semibold tabular-nums">{formatCurrency(n(t.actualToDate), baseCurrency)}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-muted-foreground">Expected</div>
+                          <div className="mt-0.5 font-semibold tabular-nums">{formatCurrency(n(t.expectedToDate), baseCurrency)}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="relative z-10 mt-4 flex items-center justify-end">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          quickAddTargetMutation.mutate(t.id);
+                        }}
+                        isLoading={quickAddTargetMutation.isPending && quickAddTargetMutation.variables === t.id}
+                        loadingText="Quick add"
+                      >
+                        <CircleDollarSign className="h-4 w-4" />
+                        Quick add
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="flex h-28 items-center justify-center rounded-lg border bg-card text-muted-foreground">
+              No savings targets yet.
+            </div>
+          )}
         </div>
       )}
+
+      <DataTable
+        columns={planColumns}
+        data={plans}
+        searchPlaceholder="Search savings plans..."
+        emptyMessage="No savings plans yet. Add your first one!"
+        mobileCard={(plan) => (
+          <MobileRowCard
+            title={plan.name}
+            amountNode={formatCurrency(plan.amount, baseCurrency)}
+            contextNode={<span className="capitalize">{plan.frequency}</span>}
+            metaItems={[
+              { label: 'Start', value: formatISODate(plan.startDate) },
+              { label: 'End', value: plan.endDate ? formatISODate(plan.endDate) : 'Ongoing' },
+            ]}
+            secondaryText={
+              plan.originalCurrency !== baseCurrency
+                ? `Entered ${formatCurrency(plan.originalAmount, plan.originalCurrency)}`
+                : null
+            }
+            editIcon={Pencil}
+            deleteIcon={Trash2}
+            onEdit={() => handleEdit(plan)}
+            onDelete={() => handleDelete(plan.id)}
+            deleteLoading={deletePlanMutation.isPending && deletePlanMutation.variables === plan.id}
+          />
+        )}
+      />
     </div>
   );
 }

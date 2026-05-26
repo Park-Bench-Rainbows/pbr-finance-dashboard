@@ -1,22 +1,32 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
+import type { ColumnDef } from '@tanstack/react-table';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { DataTable, DataTableColumnHeader } from '@/components/ui/data-table';
+import { TableActionButton } from '@/components/ui/table-action-button';
+import { MobileRowCard } from '@/components/ui/mobile-row-card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, XAxis, YAxis } from 'recharts';
 import { aggregateDailyTotals, heatBucket, monthGrid } from '@/lib/calendar-heatmap';
 import { PageLoading } from '@/components/ui/page-loading';
+import { api, type CurrencyCode, type DailyExpense, type DailyExpensePayload } from '@/lib/api-client';
+import { queryKeys } from '@/lib/query-keys';
+import {
+  DailyExpenseDialog,
+  dailyCategories as categories,
+  dailyCategoryBadgeVariant as categoryBadgeVariant,
+  formatDailyExpenseDate as formatISODate,
+  todayISO,
+} from '@/components/daily-expenses/daily-expense-dialog';
+import { useIsMobile } from '@/components/hooks/use-mobile';
 
-type CurrencyCode = 'TTD' | 'USD' | 'CAD';
-type DailyCategory = 'food' | 'gas' | 'coffee' | 'groceries' | 'dining' | 'transport' | 'other';
 type MonthlySummary = {
   dailySpendByCategory: Record<string, number>;
   dailySpendByDay: { date: string; amount: number }[];
@@ -27,45 +37,8 @@ const n = (value: unknown): number => {
   return Number.isFinite(num) ? num : 0;
 };
 
-interface DailyExpense {
-  id: string;
-  description: string;
-  category: DailyCategory;
-  purchaseDate: string;
-  amount: number; // base currency dollars
-  baseCurrency: CurrencyCode;
-  originalAmount: number;
-  originalCurrency: CurrencyCode;
-}
-
-const currencies: CurrencyCode[] = ['TTD', 'USD', 'CAD'];
-const categories: { value: DailyCategory; label: string }[] = [
-  { value: 'food', label: 'Food' },
-  { value: 'gas', label: 'Gas' },
-  { value: 'coffee', label: 'Coffee' },
-  { value: 'groceries', label: 'Groceries' },
-  { value: 'dining', label: 'Dining' },
-  { value: 'transport', label: 'Transport' },
-  { value: 'other', label: 'Other' },
-];
-
-const categoryBadgeVariant: Record<DailyCategory, React.ComponentProps<typeof Badge>["variant"]> = {
-  food: "success",
-  groceries: "success",
-  dining: "warning",
-  coffee: "warning",
-  gas: "danger",
-  transport: "info",
-  other: "default",
-};
-
 const formatCurrency = (amount: number, currency: CurrencyCode) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount);
-
-const formatISODate = (value: string) => {
-  const iso = value.includes('T') ? value : `${value}T00:00:00Z`;
-  return new Date(iso).toLocaleDateString('en-US', { timeZone: 'UTC' });
-};
 
 const COLORS = ['#3B82F6', '#22C55E', '#F97316', '#8B5CF6', '#FACC15', '#A16207'];
 
@@ -82,14 +55,6 @@ const dailyCategoryChartConfig = {
 const dailyByDayChartConfig = {
   amount: { label: 'Amount', color: 'var(--chart-3)' },
 } satisfies ChartConfig;
-
-function todayISO(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
 
 function currentMonth(): string {
   const d = new Date();
@@ -109,175 +74,195 @@ function monthOptions() {
 }
 
 export default function DailyExpensesPage() {
-  const [items, setItems] = useState<DailyExpense[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<DailyExpense | null>(null);
-  const [baseCurrency, setBaseCurrency] = useState<CurrencyCode>('TTD');
-  const [summary, setSummary] = useState<MonthlySummary | null>(null);
+  const [dialogDefaultDate, setDialogDefaultDate] = useState(todayISO());
   const [month, setMonth] = useState(currentMonth());
-  const [formData, setFormData] = useState({
-    description: '',
-    amount: '',
-    currency: 'TTD' as CurrencyCode,
-    category: 'other' as DailyCategory,
-    purchaseDate: todayISO(),
-  });
 
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [dayOpen, setDayOpen] = useState(false);
-  const [dayItems, setDayItems] = useState<DailyExpense[]>([]);
-  const [dayLoading, setDayLoading] = useState(false);
+  const isMobile = useIsMobile();
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const settingsQuery = useQuery({ queryKey: queryKeys.settings, queryFn: api.settings });
+  const itemsQuery = useQuery({
+    queryKey: queryKeys.dailyExpenses.month(month),
+    queryFn: () => api.dailyExpensesForMonth(month),
+  });
+  const summaryQuery = useQuery({
+    queryKey: queryKeys.summary(month),
+    queryFn: () => api.summary(month),
+  });
+  const dayItemsQuery = useQuery({
+    queryKey: selectedDate ? queryKeys.dailyExpenses.date(selectedDate) : ['daily-expenses', 'date', 'none'],
+    queryFn: () => api.dailyExpensesForDate(selectedDate as string),
+    enabled: Boolean(selectedDate),
+  });
 
-  useEffect(() => {
-    // When month changes, refresh month data (and summary charts).
-    fetchItems(month);
-    fetchSummary(month);
-    setSelectedDate(null);
-    setDayOpen(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [month]);
+  const baseCurrency = settingsQuery.data?.baseCurrency ?? 'TTD';
+  const items = itemsQuery.data ?? [];
+  const summary: MonthlySummary | null = summaryQuery.data
+    ? {
+        dailySpendByCategory: summaryQuery.data.dailySpendByCategory ?? {},
+        dailySpendByDay: summaryQuery.data.dailySpendByDay ?? [],
+      }
+    : null;
+  const dayItems = dayItemsQuery.data ?? [];
 
-  const load = async () => {
-    await Promise.all([fetchSettings(), fetchItems(month), fetchSummary(month)]);
+  const invalidateDailyData = async (dateISO?: string) => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.dailyExpenses.month(month) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.dailyExpenses.latest(10) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.summary(month) }),
+      dateISO ? queryClient.invalidateQueries({ queryKey: queryKeys.dailyExpenses.date(dateISO) }) : Promise.resolve(),
+    ]);
   };
 
-  const fetchSettings = async () => {
-    try {
-      const res = await fetch('/api/settings');
-      if (!res.ok) return;
-      const settings = await res.json();
-      setBaseCurrency(settings.baseCurrency as CurrencyCode);
-      setFormData((p) => ({ ...p, currency: settings.baseCurrency as CurrencyCode }));
-    } catch {
-      // ignore
-    }
-  };
+  const saveMutation = useMutation({
+    mutationFn: ({ id, payload }: { id?: string; payload: DailyExpensePayload }) =>
+      id ? api.updateDailyExpense(id, payload) : api.createDailyExpense(payload),
+    onSuccess: async () => {
+      await invalidateDailyData(selectedDate ?? undefined);
+      setDialogOpen(false);
+      setEditing(null);
+      setDialogDefaultDate(todayISO());
+    },
+  });
 
-  const fetchItems = async (monthValue: string) => {
-    try {
-      const res = await fetch(`/api/daily-expenses?month=${monthValue}`);
-      if (res.ok) setItems(await res.json());
-    } catch (e) {
-      console.error('Error fetching daily expenses:', e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchDayItems = async (dateISO: string) => {
-    setDayLoading(true);
-    try {
-      const res = await fetch(`/api/daily-expenses?date=${dateISO}`);
-      if (res.ok) setDayItems(await res.json());
-    } catch (e) {
-      console.error('Error fetching daily expenses for date:', e);
-    } finally {
-      setDayLoading(false);
-    }
-  };
-
-  const fetchSummary = async (monthValue: string) => {
-    try {
-      const res = await fetch(`/api/summary?month=${monthValue}`);
-      if (!res.ok) return;
-      const data = await res.json();
-      setSummary({
-        dailySpendByCategory: data.dailySpendByCategory ?? {},
-        dailySpendByDay: data.dailySpendByDay ?? [],
-      });
-    } catch (e) {
-      console.error('Error fetching summary:', e);
-    }
-  };
-
-  const refreshAfterMutation = async (dateISO?: string) => {
-    await Promise.all([fetchItems(month), fetchSummary(month)]);
-    if (dateISO) await fetchDayItems(dateISO);
-  };
-
-  const resetForm = () => {
-    setEditing(null);
-    setFormData({
-      description: '',
-      amount: '',
-      currency: baseCurrency,
-      category: 'other',
-      purchaseDate: todayISO(),
-    });
-  };
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.deleteDailyExpense(id),
+    onSuccess: async () => {
+      await invalidateDailyData(selectedDate ?? undefined);
+    },
+  });
 
   const openAddForDate = (dateISO: string) => {
-    resetForm();
-    setFormData((p) => ({ ...p, purchaseDate: dateISO }));
+    setEditing(null);
+    setDialogDefaultDate(dateISO);
     setDialogOpen(true);
   };
 
   const handleEdit = (item: DailyExpense) => {
     setEditing(item);
-    setFormData({
-      description: item.description,
-      amount: item.originalAmount.toString(),
-      currency: item.originalCurrency,
-      category: item.category,
-      purchaseDate: item.purchaseDate.split('T')[0],
-    });
+    setDialogDefaultDate(item.purchaseDate.split('T')[0]);
     setDialogOpen(true);
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this expense?')) return;
-    if (deletingId) return;
-
-    setDeletingId(id);
-    try {
-      const res = await fetch(`/api/daily-expenses/${id}`, { method: 'DELETE' });
-      if (res.ok) await refreshAfterMutation(selectedDate ?? undefined);
-    } catch (e) {
-      console.error('Error deleting daily expense:', e);
-    } finally {
-      setDeletingId(null);
-    }
+    deleteMutation.mutate(id);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (saving) return;
-    const payload = {
-      description: formData.description,
-      amount: parseFloat(formData.amount),
-      currency: formData.currency,
-      category: formData.category,
-      purchaseDate: formData.purchaseDate,
-    };
+  const dayColumns = useMemo<ColumnDef<DailyExpense>[]>(
+    () => [
+      {
+        accessorKey: 'description',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Description" />,
+        cell: ({ row }) => <span className="font-medium">{row.original.description}</span>,
+      },
+      {
+        accessorFn: (row) => categories.find((category) => category.value === row.category)?.label ?? row.category,
+        id: 'category',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Category" />,
+        cell: ({ row }) => (
+          <Badge variant={categoryBadgeVariant[row.original.category]} className="capitalize">
+            {categories.find((category) => category.value === row.original.category)?.label ?? row.original.category}
+          </Badge>
+        ),
+      },
+      {
+        accessorKey: 'amount',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Amount" className="justify-end" />,
+        cell: ({ row }) => (
+          <div className="text-right tabular-nums">{formatCurrency(row.original.amount, baseCurrency)}</div>
+        ),
+      },
+      {
+        id: 'actions',
+        header: () => <div className="text-right">Actions</div>,
+        enableSorting: false,
+        cell: ({ row }) => (
+          <div className="flex justify-end gap-1">
+            <TableActionButton
+              label={`Edit ${row.original.description}`}
+              icon={<Pencil className="h-4 w-4" />}
+              onClick={() => handleEdit(row.original)}
+            />
+            <TableActionButton
+              label={`Delete ${row.original.description}`}
+              icon={<Trash2 className="h-4 w-4" />}
+              destructive
+              onClick={() => handleDelete(row.original.id)}
+              isLoading={deleteMutation.isPending && deleteMutation.variables === row.original.id}
+            />
+          </div>
+        ),
+      },
+    ],
+    [baseCurrency, deleteMutation.isPending, deleteMutation.variables]
+  );
 
-    setSaving(true);
-    try {
-      const url = editing ? `/api/daily-expenses/${editing.id}` : '/api/daily-expenses';
-      const method = editing ? 'PATCH' : 'POST';
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (res.ok) {
-        await refreshAfterMutation(selectedDate ?? undefined);
-        setDialogOpen(false);
-        resetForm();
-      }
-    } catch (err) {
-      console.error('Error saving daily expense:', err);
-    } finally {
-      setSaving(false);
-    }
-  };
+  const itemColumns = useMemo<ColumnDef<DailyExpense>[]>(
+    () => [
+      {
+        accessorKey: 'purchaseDate',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Date" />,
+        cell: ({ row }) => formatISODate(row.original.purchaseDate),
+      },
+      {
+        accessorKey: 'description',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Description" />,
+        cell: ({ row }) => <span className="font-medium">{row.original.description}</span>,
+      },
+      {
+        accessorFn: (row) => categories.find((category) => category.value === row.category)?.label ?? row.category,
+        id: 'category',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Category" />,
+        cell: ({ row }) => (
+          <Badge variant={categoryBadgeVariant[row.original.category] ?? 'default'}>
+            {categories.find((category) => category.value === row.original.category)?.label ?? row.original.category}
+          </Badge>
+        ),
+      },
+      {
+        accessorKey: 'amount',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Cost" />,
+        cell: ({ row }) => (
+          <div className="flex flex-col">
+            <span>{formatCurrency(row.original.amount, baseCurrency)}</span>
+            {row.original.originalCurrency !== baseCurrency && (
+              <span className="text-xs text-muted-foreground">
+                Entered {formatCurrency(row.original.originalAmount, row.original.originalCurrency)}
+              </span>
+            )}
+          </div>
+        ),
+      },
+      {
+        id: 'actions',
+        header: () => <div className="text-right">Actions</div>,
+        enableSorting: false,
+        cell: ({ row }) => (
+          <div className="flex justify-end gap-1">
+            <TableActionButton
+              label={`Edit ${row.original.description}`}
+              icon={<Pencil className="h-4 w-4" />}
+              onClick={() => handleEdit(row.original)}
+              disabled={deleteMutation.isPending}
+            />
+            <TableActionButton
+              label={`Delete ${row.original.description}`}
+              icon={<Trash2 className="h-4 w-4" />}
+              destructive
+              onClick={() => handleDelete(row.original.id)}
+              isLoading={deleteMutation.isPending && deleteMutation.variables === row.original.id}
+            />
+          </div>
+        ),
+      },
+    ],
+    [baseCurrency, deleteMutation.isPending, deleteMutation.variables]
+  );
 
   const today = todayISO();
   const totalsByDate = aggregateDailyTotals(items);
@@ -293,17 +278,24 @@ export default function DailyExpensesPage() {
     4: 'bg-emerald-500/40 hover:bg-emerald-500/45',
   };
 
-  if (loading) {
+  if (itemsQuery.isLoading) {
     return <PageLoading variant="table" />;
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-3xl font-bold">Daily Expenses</h1>
-        <div className="flex items-center gap-2">
-          <div className="w-56">
-            <Select value={month} onValueChange={setMonth}>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="w-full sm:w-56">
+            <Select
+              value={month}
+              onValueChange={(value) => {
+                setMonth(value);
+                setSelectedDate(null);
+                setDayOpen(false);
+              }}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Select month" />
               </SelectTrigger>
@@ -316,93 +308,29 @@ export default function DailyExpensesPage() {
               </SelectContent>
             </Select>
           </div>
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button onClick={resetForm}>Add Daily Expense</Button>
-            </DialogTrigger>
-            <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{editing ? 'Edit Daily Expense' : 'Add Daily Expense'}</DialogTitle>
-              <DialogDescription>
-                Track day-to-day spending. This reduces your remaining disposable income for the month.
-              </DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleSubmit}>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="purchaseDate">Purchase date</Label>
-                  <Input
-                    id="purchaseDate"
-                    type="date"
-                    value={formData.purchaseDate}
-                    onChange={(e) => setFormData({ ...formData, purchaseDate: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="description">What was purchased?</Label>
-                  <Input
-                    id="description"
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="amount">Cost</Label>
-                  <Input
-                    id="amount"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={formData.amount}
-                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="currency">Currency</Label>
-                  <Select value={formData.currency} onValueChange={(v) => setFormData({ ...formData, currency: v as CurrencyCode })}>
-                    <SelectTrigger id="currency">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {currencies.map((c) => (
-                        <SelectItem key={c} value={c}>
-                          {c}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">Base currency: {baseCurrency}</p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="category">Category</Label>
-                  <Select value={formData.category} onValueChange={(v) => setFormData({ ...formData, category: v as DailyCategory })}>
-                    <SelectTrigger id="category">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.map((c) => (
-                        <SelectItem key={c.value} value={c.value}>
-                          {c.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit" isLoading={saving} loadingText={editing ? 'Updating…' : 'Adding…'}>
-                  {editing ? 'Update' : 'Add'}
-                </Button>
-              </DialogFooter>
-            </form>
-            </DialogContent>
-          </Dialog>
+          <DailyExpenseDialog
+            open={dialogOpen}
+            onOpenChange={(open) => {
+              setDialogOpen(open);
+              if (!open) setEditing(null);
+            }}
+            baseCurrency={baseCurrency}
+            defaultDate={dialogDefaultDate}
+            editing={editing}
+            isPending={saveMutation.isPending}
+            onSubmit={(payload) => saveMutation.mutate({ id: editing?.id, payload })}
+            trigger={
+              <Button
+                onClick={() => {
+                  setEditing(null);
+                  setDialogDefaultDate(todayISO());
+                }}
+              >
+                <Plus className="h-4 w-4" />
+                Add Daily Expense
+              </Button>
+            }
+          />
         </div>
       </div>
 
@@ -411,7 +339,7 @@ export default function DailyExpensesPage() {
           <CardTitle>Calendar</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-7 gap-2 text-xs text-muted-foreground">
+          <div className="grid grid-cols-7 gap-1 text-[11px] text-muted-foreground sm:gap-2 sm:text-xs">
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
               <div key={d} className="text-center font-medium">
                 {d}
@@ -419,11 +347,11 @@ export default function DailyExpensesPage() {
             ))}
           </div>
 
-          <div className="mt-2 space-y-2">
+          <div className="mt-2 space-y-1 sm:space-y-2">
             {grid.map((week, wi) => (
-              <div key={`week-${wi}`} className="grid grid-cols-7 gap-2">
+              <div key={`week-${wi}`} className="grid grid-cols-7 gap-1 sm:gap-2">
                 {week.map((cell, di) => {
-                  if (!cell) return <div key={`empty-${wi}-${di}`} className="h-10" />;
+                  if (!cell) return <div key={`empty-${wi}-${di}`} className="h-11 sm:h-10" />;
 
                   const total = totalsByDate[cell.dateISO] ?? 0;
                   const bucket = heatBucket(total, maxTotal);
@@ -434,22 +362,22 @@ export default function DailyExpensesPage() {
                       key={cell.dateISO}
                       type="button"
                       className={[
-                        'h-10 rounded-md border text-left px-2 py-1 text-sm transition-colors',
+                        'rounded-md border text-left py-1 transition-colors',
+                        'h-11 px-1 text-xs sm:h-10 sm:px-2 sm:text-sm',
                         heatClasses[bucket],
                         isToday ? 'ring-2 ring-emerald-500/40' : '',
                       ].join(' ')}
                       title={`${cell.dateISO} • ${formatCurrency(total, baseCurrency)}`}
-                      onClick={async () => {
+                      onClick={() => {
                         setSelectedDate(cell.dateISO);
                         setDayOpen(true);
-                        await fetchDayItems(cell.dateISO);
                       }}
                       aria-label={`${cell.dateISO} total ${formatCurrency(total, baseCurrency)}`}
                     >
                       <div className="flex items-start justify-between">
                         <span className="font-medium">{cell.day}</span>
                         {total > 0 ? (
-                          <span className="text-xs text-muted-foreground tabular-nums">
+                          <span className="hidden text-xs text-muted-foreground tabular-nums sm:inline">
                             {formatCurrency(total, baseCurrency)}
                           </span>
                         ) : null}
@@ -481,53 +409,37 @@ export default function DailyExpensesPage() {
                 }}
                 disabled={!selectedDate}
               >
+                <Plus className="h-4 w-4" />
                 Add expense
               </Button>
             </div>
 
-            {dayLoading ? (
+            {dayItemsQuery.isLoading ? (
               <div className="text-sm text-muted-foreground">Loading…</div>
-            ) : dayItems.length === 0 ? (
-              <div className="text-sm text-muted-foreground">No expenses recorded for this day.</div>
             ) : (
-              <div className="rounded-lg border bg-card text-card-foreground">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Description</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead className="text-right">Amount</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {dayItems.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell className="font-medium">{item.description}</TableCell>
-                        <TableCell>
-                          <Badge variant={categoryBadgeVariant[item.category]} className="capitalize">
-                            {item.category}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">{formatCurrency(item.amount, baseCurrency)}</TableCell>
-                        <TableCell className="text-right">
-                          <Button variant="ghost" size="sm" className="mr-2" onClick={() => handleEdit(item)}>
-                            Edit
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-red-600 hover:text-red-700"
-                            onClick={() => handleDelete(item.id)}
-                          >
-                            Delete
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+              <DataTable
+                columns={dayColumns}
+                data={dayItems}
+                hideSearch
+                initialPageSize={5}
+                emptyMessage="No expenses recorded for this day."
+                mobileCard={(item) => (
+                  <MobileRowCard
+                    title={item.description}
+                    amountNode={formatCurrency(item.amount, baseCurrency)}
+                    contextNode={
+                      <Badge variant={categoryBadgeVariant[item.category]} className="capitalize">
+                        {categories.find((category) => category.value === item.category)?.label ?? item.category}
+                      </Badge>
+                    }
+                    editIcon={Pencil}
+                    deleteIcon={Trash2}
+                    onEdit={() => handleEdit(item)}
+                    onDelete={() => handleDelete(item.id)}
+                    deleteLoading={deleteMutation.isPending && deleteMutation.variables === item.id}
+                  />
+                )}
+              />
             )}
           </div>
 
@@ -537,7 +449,7 @@ export default function DailyExpensesPage() {
               onClick={() => {
                 setDayOpen(false);
                 setSelectedDate(null);
-                setDayItems([]);
+                queryClient.removeQueries({ queryKey: ['daily-expenses', 'date'] });
               }}
             >
               Close
@@ -554,8 +466,11 @@ export default function DailyExpensesPage() {
             </CardHeader>
             <CardContent>
               {Object.keys(summary.dailySpendByCategory ?? {}).length > 0 ? (
-                <ChartContainer config={dailyCategoryChartConfig} className="min-h-[260px] w-full">
-                  <ResponsiveContainer width="100%" height={260}>
+                <ChartContainer
+                  config={dailyCategoryChartConfig}
+                  className="h-[240px] w-full sm:h-[260px] [&_.recharts-pie-label-text]:hidden sm:[&_.recharts-pie-label-text]:block"
+                >
+                  <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
                         data={Object.entries(summary.dailySpendByCategory).map(([cat, amt]) => ({
@@ -565,10 +480,10 @@ export default function DailyExpensesPage() {
                         }))}
                         cx="50%"
                         cy="50%"
-                        outerRadius={90}
+                        outerRadius={isMobile ? 76 : 90}
                         dataKey="value"
                         labelLine={false}
-                        label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
+                        label={isMobile ? false : ({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
                       >
                         {Object.entries(summary.dailySpendByCategory).map(([cat]) => (
                           <Cell key={`daily-cat-${cat}`} fill={`var(--color-${cat})`} />
@@ -600,12 +515,12 @@ export default function DailyExpensesPage() {
             </CardHeader>
             <CardContent>
               {summary.dailySpendByDay?.length ? (
-                <ChartContainer config={dailyByDayChartConfig} className="min-h-[260px] w-full">
-                  <ResponsiveContainer width="100%" height={260}>
-                    <BarChart accessibilityLayer data={summary.dailySpendByDay.map((d) => ({ ...d, amount: n(d.amount) }))}>
+                <ChartContainer config={dailyByDayChartConfig} className="h-[240px] w-full sm:h-[260px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart accessibilityLayer data={summary.dailySpendByDay.map((d) => ({ ...d, amount: n(d.amount) }))} margin={{ left: isMobile ? 0 : 8, right: 8 }}>
                       <CartesianGrid vertical={false} />
                       <XAxis dataKey="date" tickFormatter={(v) => String(v).slice(8)} tickLine={false} axisLine={false} tickMargin={10} />
-                      <YAxis tickLine={false} axisLine={false} />
+                      <YAxis hide={isMobile} tickLine={false} axisLine={false} />
                       <ChartTooltip
                         content={
                           <ChartTooltipContent
@@ -629,69 +544,37 @@ export default function DailyExpensesPage() {
         </div>
       )}
 
-      {items.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-8 text-center">
-          <p className="text-muted-foreground">No daily expenses yet. Add your first one!</p>
-        </div>
-      ) : (
-        <div className="rounded-lg border bg-card text-card-foreground">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Cost</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell>{formatISODate(item.purchaseDate)}</TableCell>
-                  <TableCell className="font-medium">{item.description}</TableCell>
-                  <TableCell>
-                    <Badge variant={categoryBadgeVariant[item.category] ?? 'default'}>
-                      {categories.find((c) => c.value === item.category)?.label ?? item.category}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-col">
-                      <span>{formatCurrency(item.amount, baseCurrency)}</span>
-                      {item.originalCurrency !== baseCurrency && (
-                        <span className="text-xs text-muted-foreground">
-                          Entered {formatCurrency(item.originalAmount, item.originalCurrency)}
-                        </span>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="mr-2"
-                      onClick={() => handleEdit(item)}
-                      disabled={Boolean(deletingId)}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-600 hover:text-red-700"
-                      onClick={() => handleDelete(item.id)}
-                      isLoading={deletingId === item.id}
-                      loadingText="Deleting…"
-                    >
-                      Delete
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      <DataTable
+        columns={itemColumns}
+        data={items}
+        searchPlaceholder="Search daily expenses..."
+        emptyMessage="No daily expenses yet. Add your first one!"
+        mobileCard={(item) => (
+          <MobileRowCard
+            title={item.description}
+            amountNode={formatCurrency(item.amount, baseCurrency)}
+            contextNode={
+              <div className="flex items-center gap-2">
+                <Badge variant={categoryBadgeVariant[item.category] ?? 'default'}>
+                  {categories.find((category) => category.value === item.category)?.label ?? item.category}
+                </Badge>
+                <span className="text-xs text-muted-foreground">{formatISODate(item.purchaseDate)}</span>
+              </div>
+            }
+            secondaryText={
+              item.originalCurrency !== baseCurrency
+                ? `Entered ${formatCurrency(item.originalAmount, item.originalCurrency)}`
+                : null
+            }
+            editIcon={Pencil}
+            deleteIcon={Trash2}
+            onEdit={() => handleEdit(item)}
+            onDelete={() => handleDelete(item.id)}
+            editDisabled={deleteMutation.isPending}
+            deleteLoading={deleteMutation.isPending && deleteMutation.variables === item.id}
+          />
+        )}
+      />
     </div>
   );
 }
