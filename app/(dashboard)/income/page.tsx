@@ -1,27 +1,20 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
+import type { ColumnDef } from '@tanstack/react-table';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Pencil, Plus, Save, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { DataTable, DataTableColumnHeader } from '@/components/ui/data-table';
+import { TableActionButton } from '@/components/ui/table-action-button';
+import { MobileRowCard } from '@/components/ui/mobile-row-card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PageLoading } from '@/components/ui/page-loading';
-
-interface Income {
-  id: string;
-  name: string;
-  amount: number;
-  baseCurrency: 'TTD' | 'USD' | 'CAD';
-  originalAmount: number;
-  originalCurrency: 'TTD' | 'USD' | 'CAD';
-  frequency: 'monthly' | 'biweekly';
-  startDate: string;
-  endDate?: string;
-}
-
-type CurrencyCode = 'TTD' | 'USD' | 'CAD';
+import { api, type CurrencyCode, type Income, type IncomePayload } from '@/lib/api-client';
+import { queryKeys } from '@/lib/query-keys';
 
 const currencies: { value: CurrencyCode; label: string }[] = [
   { value: 'TTD', label: 'TTD' },
@@ -42,13 +35,9 @@ const formatISODate = (value: string) => {
 };
 
 export default function IncomePage() {
-  const [incomes, setIncomes] = useState<Income[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingIncome, setEditingIncome] = useState<Income | null>(null);
-  const [baseCurrency, setBaseCurrency] = useState<CurrencyCode>('TTD');
   const [formData, setFormData] = useState({
     name: '',
     amount: '',
@@ -58,46 +47,35 @@ export default function IncomePage() {
     endDate: '',
   });
 
-  useEffect(() => {
-    load();
-  }, []);
+  const settingsQuery = useQuery({ queryKey: queryKeys.settings, queryFn: api.settings });
+  const incomesQuery = useQuery({ queryKey: queryKeys.incomes, queryFn: api.incomes });
+  const baseCurrency = settingsQuery.data?.baseCurrency ?? 'TTD';
+  const incomes = incomesQuery.data ?? [];
 
-  const load = async () => {
-    await Promise.all([fetchSettings(), fetchIncomes()]);
-  };
+  const saveMutation = useMutation({
+    mutationFn: ({ id, payload }: { id?: string; payload: IncomePayload }) =>
+      id ? api.updateIncome(id, payload) : api.createIncome(payload),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.incomes });
+      await queryClient.invalidateQueries({ queryKey: ['summary'] });
+      setDialogOpen(false);
+      resetForm();
+    },
+  });
 
-  const fetchSettings = async () => {
-    try {
-      const response = await fetch('/api/settings');
-      if (response.ok) {
-        const data = await response.json();
-        setBaseCurrency(data.baseCurrency as CurrencyCode);
-        setFormData((prev) => ({ ...prev, currency: data.baseCurrency as CurrencyCode }));
-      }
-    } catch (error) {
-      console.error('Error fetching settings:', error);
-    }
-  };
-
-  const fetchIncomes = async () => {
-    try {
-      const response = await fetch('/api/income');
-      if (response.ok) {
-        const data = await response.json();
-        setIncomes(data);
-      }
-    } catch (error) {
-      console.error('Error fetching incomes:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.deleteIncome(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.incomes });
+      await queryClient.invalidateQueries({ queryKey: ['summary'] });
+    },
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (saving) return;
+    if (saveMutation.isPending) return;
 
-    const payload = {
+    const payload: IncomePayload = {
       name: formData.name,
       amount: parseFloat(formData.amount),
       currency: formData.currency,
@@ -106,44 +84,12 @@ export default function IncomePage() {
       endDate: formData.endDate || undefined,
     };
 
-    setSaving(true);
-    try {
-      const url = editingIncome ? `/api/income/${editingIncome.id}` : '/api/income';
-      const method = editingIncome ? 'PATCH' : 'POST';
-
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (response.ok) {
-        await fetchIncomes();
-        setDialogOpen(false);
-        resetForm();
-      }
-    } catch (error) {
-      console.error('Error saving income:', error);
-    } finally {
-      setSaving(false);
-    }
+    saveMutation.mutate({ id: editingIncome?.id, payload });
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this income?')) return;
-    if (deletingId) return;
-
-    setDeletingId(id);
-    try {
-      const response = await fetch(`/api/income/${id}`, { method: 'DELETE' });
-      if (response.ok) {
-        await fetchIncomes();
-      }
-    } catch (error) {
-      console.error('Error deleting income:', error);
-    } finally {
-      setDeletingId(null);
-    }
+    deleteMutation.mutate(id);
   };
 
   const handleEdit = (income: Income) => {
@@ -176,17 +122,82 @@ export default function IncomePage() {
     resetForm();
   };
 
-  if (loading) {
+  const columns = useMemo<ColumnDef<Income>[]>(
+    () => [
+      {
+        accessorKey: 'name',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Name" />,
+        cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
+      },
+      {
+        accessorKey: 'amount',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Amount" />,
+        cell: ({ row }) => (
+          <div className="flex flex-col">
+            <span>{formatCurrency(row.original.amount, baseCurrency)}</span>
+            {row.original.originalCurrency !== baseCurrency && (
+              <span className="text-xs text-muted-foreground">
+                Entered {formatCurrency(row.original.originalAmount, row.original.originalCurrency)}
+              </span>
+            )}
+          </div>
+        ),
+      },
+      {
+        accessorKey: 'frequency',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Frequency" />,
+        cell: ({ row }) => <span className="capitalize">{row.original.frequency}</span>,
+      },
+      {
+        accessorKey: 'startDate',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Start Date" />,
+        cell: ({ row }) => formatISODate(row.original.startDate),
+      },
+      {
+        accessorKey: 'endDate',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="End Date" />,
+        cell: ({ row }) => (row.original.endDate ? formatISODate(row.original.endDate) : 'Ongoing'),
+      },
+      {
+        id: 'actions',
+        header: () => <div className="text-right">Actions</div>,
+        enableSorting: false,
+        cell: ({ row }) => (
+          <div className="flex justify-end gap-1">
+            <TableActionButton
+              label={`Edit ${row.original.name}`}
+              icon={<Pencil className="h-4 w-4" />}
+              onClick={() => handleEdit(row.original)}
+              disabled={deleteMutation.isPending}
+            />
+            <TableActionButton
+              label={`Delete ${row.original.name}`}
+              icon={<Trash2 className="h-4 w-4" />}
+              destructive
+              onClick={() => handleDelete(row.original.id)}
+              isLoading={deleteMutation.isPending && deleteMutation.variables === row.original.id}
+            />
+          </div>
+        ),
+      },
+    ],
+    [baseCurrency, deleteMutation.isPending, deleteMutation.variables]
+  );
+
+  if (incomesQuery.isLoading) {
     return <PageLoading variant="table" />;
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-3xl font-bold">Income Sources</h1>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
-            <Button onClick={resetForm}>Add Income</Button>
+            <Button onClick={resetForm}>
+              <Plus className="h-4 w-4" />
+              Add Income
+            </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
@@ -280,7 +291,8 @@ export default function IncomePage() {
                 <Button type="button" variant="outline" onClick={handleDialogClose}>
                   Cancel
                 </Button>
-                <Button type="submit" isLoading={saving} loadingText={editingIncome ? 'Updating…' : 'Adding…'}>
+                <Button type="submit" isLoading={saveMutation.isPending} loadingText={editingIncome ? 'Updating…' : 'Adding…'}>
+                  <Save className="h-4 w-4" />
                   {editingIncome ? 'Update' : 'Add'}
                 </Button>
               </DialogFooter>
@@ -289,69 +301,34 @@ export default function IncomePage() {
         </Dialog>
       </div>
 
-      {incomes.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-8 text-center">
-          <p className="text-muted-foreground">No income sources yet. Add your first one!</p>
-        </div>
-      ) : (
-        <div className="rounded-lg border bg-card text-card-foreground">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Amount</TableHead>
-                <TableHead>Frequency</TableHead>
-                <TableHead>Start Date</TableHead>
-                <TableHead>End Date</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {incomes.map((income) => (
-                <TableRow key={income.id}>
-                  <TableCell className="font-medium">{income.name}</TableCell>
-                  <TableCell>
-                    <div className="flex flex-col">
-                      <span>{formatCurrency(income.amount, baseCurrency)}</span>
-                      {income.originalCurrency !== baseCurrency && (
-                        <span className="text-xs text-muted-foreground">
-                          Entered {formatCurrency(income.originalAmount, income.originalCurrency)}
-                        </span>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="capitalize">{income.frequency}</TableCell>
-                  <TableCell>{formatISODate(income.startDate)}</TableCell>
-                  <TableCell>
-                    {income.endDate ? formatISODate(income.endDate) : 'Ongoing'}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleEdit(income)}
-                      className="mr-2"
-                      disabled={Boolean(deletingId)}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(income.id)}
-                      className="text-red-600 hover:text-red-700"
-                      isLoading={deletingId === income.id}
-                      loadingText="Deleting…"
-                    >
-                      Delete
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      <DataTable
+        columns={columns}
+        data={incomes}
+        searchPlaceholder="Search income sources..."
+        emptyMessage="No income sources yet. Add your first one!"
+        mobileCard={(income) => (
+          <MobileRowCard
+            title={income.name}
+            amountNode={formatCurrency(income.amount, baseCurrency)}
+            contextNode={<span className="capitalize">{income.frequency}</span>}
+            metaItems={[
+              { label: 'Start', value: formatISODate(income.startDate) },
+              { label: 'End', value: income.endDate ? formatISODate(income.endDate) : 'Ongoing' },
+            ]}
+            secondaryText={
+              income.originalCurrency !== baseCurrency
+                ? `Entered ${formatCurrency(income.originalAmount, income.originalCurrency)}`
+                : null
+            }
+            editIcon={Pencil}
+            deleteIcon={Trash2}
+            onEdit={() => handleEdit(income)}
+            onDelete={() => handleDelete(income.id)}
+            editDisabled={deleteMutation.isPending}
+            deleteLoading={deleteMutation.isPending && deleteMutation.variables === income.id}
+          />
+        )}
+      />
     </div>
   );
 }

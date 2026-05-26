@@ -41,9 +41,11 @@ export class UserSettingsRepository {
   }
 
   async upsert(userId: string, data: { baseCurrency?: CurrencyCode; theme?: ThemeMode }): Promise<UserSettings> {
-    const insertValues: any = { userId };
-    if (data.baseCurrency) insertValues.baseCurrency = data.baseCurrency;
-    if (data.theme) insertValues.theme = data.theme;
+    const insertValues: any = {
+      userId,
+      baseCurrency: data.baseCurrency ?? 'TTD',
+      theme: data.theme ?? 'system',
+    };
 
     const setValues: any = { updatedAt: new Date() };
     if (data.baseCurrency) setValues.baseCurrency = data.baseCurrency;

@@ -82,7 +82,7 @@ export function SidebarNav({
   return (
     <aside
       className={cn(
-        'h-full w-[264px] shrink-0 border-r bg-background/60 backdrop-blur supports-[backdrop-filter]:bg-background/40',
+        'h-full w-[264px] shrink-0 border-r border-sidebar-border bg-white text-sidebar-foreground shadow-md shadow-black/5 dark:bg-sidebar dark:shadow-none',
         collapsed && 'w-[84px]',
         className
       )}
@@ -116,7 +116,7 @@ export function SidebarNav({
         </div>
       )}
 
-      <nav className={cn('px-2 pb-4', showHeader ? 'pt-2' : 'pt-4')}>
+      <nav className={cn('px-2 pb-4', showHeader ? 'pt-2' : 'pt-2')}>
         <div className="space-y-1">
           {navItems.map((item) => {
             const active = pathname === item.href;

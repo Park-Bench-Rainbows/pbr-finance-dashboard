@@ -21,6 +21,10 @@ export class DailyExpenseService {
     return this.repo.findForDate(userId, dateISO);
   }
 
+  async getLatest(userId: string, limit: number): Promise<DailyExpense[]> {
+    return this.repo.findLatest(userId, limit);
+  }
+
   async create(userId: string, data: CreateDailyExpenseDTO): Promise<DailyExpense> {
     return this.repo.create(userId, data);
   }
