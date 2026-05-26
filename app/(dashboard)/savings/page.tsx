@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PageLoading } from '@/components/ui/page-loading';
+import { SavingsTargetCarousel } from '@/components/savings/savings-target-carousel';
 
 type CurrencyCode = 'TTD' | 'USD' | 'CAD';
 
@@ -685,7 +686,20 @@ export default function SavingsPage() {
               </Dialog>
             </div>
           </div>
-          <div className="grid gap-3 md:grid-cols-2">
+          <SavingsTargetCarousel
+            targets={targets}
+            baseCurrency={baseCurrency}
+            formatCurrency={formatCurrency}
+            formatISODate={formatISODate}
+            detailsHref={(t) => `/savings/targets/${t.id}?month=${targetsMonth}`}
+            onQuickAdd={(t) => {
+              setContribData((p) => ({ ...p, savingsTargetId: t.id }));
+              setContribDialogOpen(true);
+            }}
+            className="mt-1"
+          />
+
+          <div className="hidden grid gap-3 md:grid-cols-2">
             {targets.map((t) => (
               <div key={t.id} className="rounded-lg border p-4">
                 <div className="flex items-start justify-between gap-3">

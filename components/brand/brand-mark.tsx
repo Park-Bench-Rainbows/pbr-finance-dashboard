@@ -9,11 +9,12 @@ type BrandMarkProps = {
 export function BrandMark({ className, title = "Hey Bud" }: BrandMarkProps) {
   return (
     <img
-      src="/heybud-logo.png"
+      // src="/heybud-logo.png"
+      src="/brand-mark2.png"
       alt={title}
       title={title}
       className={cn("inline-block object-contain")}
-      style={{ width: "200px", height: "50px" }}
+      style={{ width: "180px", height: "50px" }}
     
       // width={200}
       // height={200}
