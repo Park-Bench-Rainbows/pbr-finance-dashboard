@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import Link from 'next/link';
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
-import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, ResponsiveContainer, LineChart, Line } from 'recharts';
 
 interface MonthlySummary {
   month: string;
@@ -21,6 +21,14 @@ interface MonthlySummary {
   budgetsByCategory: Record<string, number>;
   budgetRemainingByCategory: Record<string, number>;
 }
+
+type TrendsPoint = {
+  month: string;
+  totalIncome: number;
+  totalRecurringExpenses: number;
+  totalDailySpend: number;
+  dailySpendByCategory: Record<string, number>;
+};
 
 type CurrencyCode = 'TTD' | 'USD' | 'CAD';
 type DailyCategory = 'food' | 'gas' | 'coffee' | 'groceries' | 'dining' | 'transport' | 'other';
@@ -90,9 +98,12 @@ export default function DashboardPage() {
   const [summary, setSummary] = useState<MonthlySummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState('');
+  const [view, setView] = useState<'month' | 'ytd'>('month');
   const [baseCurrency, setBaseCurrency] = useState<CurrencyCode>('TTD');
   const [todayExpenses, setTodayExpenses] = useState<DailyExpense[]>([]);
   const [todayLoading, setTodayLoading] = useState(true);
+  const [trends, setTrends] = useState<TrendsPoint[]>([]);
+  const [trendsLoading, setTrendsLoading] = useState(false);
 
   useEffect(() => {
     // Set current month as default
@@ -104,10 +115,10 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!selectedMonth) return;
     load();
-  }, [selectedMonth]);
+  }, [selectedMonth, view]);
 
   const load = async () => {
-    await Promise.all([fetchSettings(), fetchSummary(), fetchTodayExpenses()]);
+    await Promise.all([fetchSettings(), fetchSummary(), fetchTodayExpenses(), view === 'ytd' ? fetchTrends() : Promise.resolve()]);
   };
 
   const fetchSettings = async () => {
@@ -146,6 +157,21 @@ export default function DashboardPage() {
       console.error('Error fetching today expenses:', error);
     } finally {
       setTodayLoading(false);
+    }
+  };
+
+  const fetchTrends = async () => {
+    setTrendsLoading(true);
+    try {
+      const res = await fetch(`/api/trends?period=ytd&month=${selectedMonth}&endDate=${todayISO()}`);
+      if (res.ok) {
+        const data = await res.json();
+        setTrends((data?.points ?? []) as TrendsPoint[]);
+      }
+    } catch (error) {
+      console.error('Error fetching trends:', error);
+    } finally {
+      setTrendsLoading(false);
     }
   };
 
@@ -192,19 +218,30 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Dashboard</h1>
-        <div className="w-64">
-          <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select month" />
+        <div className="flex items-center gap-2">
+          <Select value={view} onValueChange={(v) => setView(v as 'month' | 'ytd')}>
+            <SelectTrigger className="w-36">
+              <SelectValue placeholder="View" />
             </SelectTrigger>
             <SelectContent>
-              {getMonthOptions().map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
+              <SelectItem value="month">This month</SelectItem>
+              <SelectItem value="ytd">YTD trends</SelectItem>
             </SelectContent>
           </Select>
+          <div className="w-64">
+            <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select month" />
+              </SelectTrigger>
+              <SelectContent>
+                {getMonthOptions().map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 
@@ -447,77 +484,122 @@ export default function DashboardPage() {
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Income vs Expenses</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ChartContainer config={incomeExpenseChartConfig} className="min-h-[300px] w-full">
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart accessibilityLayer data={incomeVsExpensesData}>
-                      <CartesianGrid vertical={false} />
-                      <XAxis dataKey="name" tickLine={false} axisLine={false} tickMargin={10} />
-                      <YAxis tickLine={false} axisLine={false} />
-                      <ChartTooltip
-                        content={
-                          <ChartTooltipContent
-                            formatter={(value) => formatCurrency(value as number, baseCurrency)}
-                            indicator="dot"
-                            hideLabel
+            {view === 'month' ? (
+              <>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Income vs Expenses</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ChartContainer config={incomeExpenseChartConfig} className="min-h-[300px] w-full">
+                      <ResponsiveContainer width="100%" height={300}>
+                        <BarChart accessibilityLayer data={incomeVsExpensesData}>
+                          <CartesianGrid vertical={false} />
+                          <XAxis dataKey="name" tickLine={false} axisLine={false} tickMargin={10} />
+                          <YAxis tickLine={false} axisLine={false} />
+                          <ChartTooltip
+                            content={
+                              <ChartTooltipContent
+                                formatter={(value) => formatCurrency(value as number, baseCurrency)}
+                                indicator="dot"
+                                hideLabel
+                              />
+                            }
                           />
-                        }
-                      />
-                      <ChartLegend content={<ChartLegendContent />} />
-                      <Bar dataKey="amount" fill="var(--color-income)" radius={6} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </ChartContainer>
-              </CardContent>
-            </Card>
+                          <ChartLegend content={<ChartLegendContent />} />
+                          <Bar dataKey="amount" fill="var(--color-income)" radius={6} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </ChartContainer>
+                  </CardContent>
+                </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Income Allocation</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {incomeAllocationData.some((item) => item.value > 0) ? (
-                  <ChartContainer config={allocationChartConfig} className="min-h-[300px] w-full">
-                    <ResponsiveContainer width="100%" height={300}>
-                      <PieChart>
-                        <Pie
-                          data={incomeAllocationData.map((d) => ({ ...d, fill: `var(--color-${d.name.toLowerCase()})` }))}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={70}
-                          outerRadius={100}
-                          paddingAngle={3}
-                          dataKey="value"
-                          nameKey="name"
-                          label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
-                        >
-                          {incomeAllocationData.map((entry) => (
-                            <Cell key={entry.name} fill={`var(--color-${entry.name.toLowerCase()})`} />
-                          ))}
-                        </Pie>
-                        <ChartTooltip
-                          content={
-                            <ChartTooltipContent
-                              formatter={(value) => formatCurrency(value as number, baseCurrency)}
-                              indicator="dot"
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Income Allocation</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {incomeAllocationData.some((item) => item.value > 0) ? (
+                      <ChartContainer config={allocationChartConfig} className="min-h-[300px] w-full">
+                        <ResponsiveContainer width="100%" height={300}>
+                          <PieChart>
+                            <Pie
+                              data={incomeAllocationData.map((d) => ({ ...d, fill: `var(--color-${d.name.toLowerCase()})` }))}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={70}
+                              outerRadius={100}
+                              paddingAngle={3}
+                              dataKey="value"
+                              nameKey="name"
+                              label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
+                            >
+                              {incomeAllocationData.map((entry) => (
+                                <Cell key={entry.name} fill={`var(--color-${entry.name.toLowerCase()})`} />
+                              ))}
+                            </Pie>
+                            <ChartTooltip
+                              content={
+                                <ChartTooltipContent
+                                  formatter={(value) => formatCurrency(value as number, baseCurrency)}
+                                  indicator="dot"
+                                />
+                              }
                             />
-                          }
-                        />
-                        <ChartLegend content={<ChartLegendContent />} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </ChartContainer>
-                ) : (
-                  <div className="flex h-[300px] items-center justify-center text-muted-foreground">
-                    No allocation data to display
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                            <ChartLegend content={<ChartLegendContent />} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </ChartContainer>
+                    ) : (
+                      <div className="flex h-[300px] items-center justify-center text-muted-foreground">
+                        No allocation data to display
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </>
+            ) : (
+              <Card className="md:col-span-2">
+                <CardHeader>
+                  <CardTitle>YTD Monthly Trend</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {trendsLoading ? (
+                    <div className="flex h-[300px] items-center justify-center text-muted-foreground">Loading trends…</div>
+                  ) : trends.length === 0 ? (
+                    <div className="flex h-[300px] items-center justify-center text-muted-foreground">No trend data yet</div>
+                  ) : (
+                    <ChartContainer config={incomeExpenseChartConfig} className="min-h-[300px] w-full">
+                      <ResponsiveContainer width="100%" height={300}>
+                        <LineChart accessibilityLayer data={trends}>
+                          <CartesianGrid vertical={false} />
+                          <XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={10} />
+                          <YAxis tickLine={false} axisLine={false} />
+                          <ChartTooltip
+                            content={
+                              <ChartTooltipContent
+                                formatter={(value) => formatCurrency(value as number, baseCurrency)}
+                                indicator="dot"
+                              />
+                            }
+                          />
+                          <ChartLegend content={<ChartLegendContent />} />
+                          <Line type="monotone" dataKey="totalIncome" stroke="var(--color-income)" strokeWidth={2} dot={false} />
+                          <Line
+                            type="monotone"
+                            dataKey="totalRecurringExpenses"
+                            stroke="var(--color-expenses)"
+                            strokeWidth={2}
+                            dot={false}
+                          />
+                          <Line type="monotone" dataKey="totalDailySpend" stroke="var(--color-savings)" strokeWidth={2} dot={false} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </ChartContainer>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
             {/* Page-specific breakdown charts are shown on their respective pages */}
           </div>

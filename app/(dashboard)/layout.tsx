@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { Button } from '@/components/ui/button';
 import { ThemeManager } from '@/components/theme/theme-manager';
+import { SidebarNav, useDashboardNavLabel } from '@/components/navigation/sidebar-nav';
 import { BrandMark } from '@/components/brand/brand-mark';
+import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,7 +20,8 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ChevronDown, User as UserIcon } from 'lucide-react';
+import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/ui/dialog';
+import { Menu, PanelLeft, User as UserIcon, XIcon } from 'lucide-react';
 
 export default function DashboardLayout({
   children,
@@ -31,6 +32,8 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const pageLabel = useDashboardNavLabel();
 
   const handleLogout = async () => {
     const supabase = createClient();
@@ -38,12 +41,6 @@ export default function DashboardLayout({
     router.push('/login');
     router.refresh();
   };
-
-  const navItems = [
-    { href: '/dashboard', label: 'Dashboard' },
-    { href: '/income', label: 'Income' },
-    { href: '/savings', label: 'Savings' },
-  ];
 
   useEffect(() => {
     const load = async () => {
@@ -66,6 +63,15 @@ export default function DashboardLayout({
     };
 
     load();
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('pbr_sidebar_collapsed');
+      setSidebarCollapsed(raw === 'true');
+    } catch {
+      // ignore
+    }
   }, []);
 
   const initials = useMemo(() => {
@@ -108,119 +114,113 @@ export default function DashboardLayout({
   return (
     <div className="min-h-screen bg-background">
       <ThemeManager />
-      <nav className="border-b bg-background/60 backdrop-blur supports-[backdrop-filter]:bg-background/40">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex h-16 justify-between">
-            <div className="flex">
-              <div className="flex flex-shrink-0 items-center">
-                <div className="flex items-center gap-3">
-                  <BrandMark className="h-7 w-auto" title="Hey Bud" />
-                </div>
-              </div>
-              <div className="ml-10 flex space-x-4">
-                {navItems
-                  .filter((i) => i.href !== '/savings')
-                  .map((item) => (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className={`inline-flex items-center border-b-2 px-1 pt-1 text-sm font-medium ${
-                        pathname === item.href
-                          ? 'border-primary text-foreground'
-                          : 'border-transparent text-muted-foreground hover:border-border hover:text-foreground'
-                      }`}
-                    >
-                      {item.label}
-                    </Link>
-                  ))}
 
-                <div
-                  className={`inline-flex items-center gap-1 border-b-2 px-1 pt-1 text-sm font-medium ${
-                    pathname === '/expenses' || pathname === '/daily-expenses' || pathname === '/budgets'
-                      ? 'border-primary'
-                      : 'border-transparent'
-                  }`}
-                >
-                  <Link
-                    href="/expenses"
-                    className={`inline-flex items-center ${
-                      pathname === '/expenses' || pathname === '/daily-expenses' || pathname === '/budgets'
-                        ? 'text-foreground'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    Expenses
-                  </Link>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        type="button"
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        aria-label="Expenses menu"
-                      >
-                        <ChevronDown className="h-4 w-4" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start">
-                      <DropdownMenuItem onSelect={() => router.push('/expenses')}>Recurring</DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => router.push('/daily-expenses')}>Daily</DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => router.push('/budgets')}>Budgets</DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-
-                <Link
-                  href="/savings"
-                  className={`inline-flex items-center border-b-2 px-1 pt-1 text-sm font-medium ${
-                    pathname === '/savings'
-                      ? 'border-primary text-foreground'
-                      : 'border-transparent text-muted-foreground hover:border-border hover:text-foreground'
-                  }`}
-                >
-                  Savings
-                </Link>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border bg-background/70 text-sm font-medium text-foreground hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    aria-label="User menu"
-                  >
-                    {initials ? (
-                      <span className="select-none">{initials}</span>
-                    ) : (
-                      <UserIcon className="h-4 w-4" />
-                    )}
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuLabel>{userEmail ?? 'Account'}</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onSelect={() => router.push('/settings')}>Settings</DropdownMenuItem>
-                  <DropdownMenuSub>
-                    <DropdownMenuSubTrigger>Theme</DropdownMenuSubTrigger>
-                    <DropdownMenuSubContent>
-                      <DropdownMenuRadioGroup value={theme} onValueChange={(v) => updateTheme(v as any)}>
-                        <DropdownMenuRadioItem value="light">Light</DropdownMenuRadioItem>
-                        <DropdownMenuRadioItem value="dark">Dark</DropdownMenuRadioItem>
-                        <DropdownMenuRadioItem value="system">System</DropdownMenuRadioItem>
-                      </DropdownMenuRadioGroup>
-                    </DropdownMenuSubContent>
-                  </DropdownMenuSub>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onSelect={handleLogout}>Logout</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </div>
+      <div className="flex min-h-screen">
+        <div className="hidden lg:block">
+          <SidebarNav collapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
         </div>
-      </nav>
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        {children}
-      </main>
+
+        <div className="min-w-0 flex-1">
+          <nav className="sticky top-0 z-40 border-b bg-background/60 backdrop-blur supports-[backdrop-filter]:bg-background/40">
+            <div className="mx-auto flex h-16 max-w-7xl items-center gap-3 px-3 sm:px-4 lg:px-6">
+              <div className="lg:hidden">
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" size="icon" aria-label="Open navigation">
+                      <Menu className="h-4 w-4" />
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent
+                    className="fixed left-0 top-0 h-[100dvh] w-[320px] translate-x-0 translate-y-0 rounded-none border-r p-0 sm:max-w-none"
+                    showCloseButton={false}
+                  >
+                    <div className="flex h-16 items-center justify-between border-b px-4">
+                      <div className="flex items-center gap-3">
+                        <BrandMark className="h-5 w-5" />
+                        <div className="text-[13px] font-semibold tracking-tight text-foreground">
+                          Finance Dashboard
+                        </div>
+                      </div>
+                      <DialogClose asChild>
+                        <Button variant="ghost" size="icon" aria-label="Close navigation">
+                          <XIcon className="h-4 w-4" />
+                        </Button>
+                      </DialogClose>
+                    </div>
+                    <SidebarNav collapsed={false} showHeader={false} className="w-full border-r-0 bg-background" />
+                  </DialogContent>
+                </Dialog>
+              </div>
+
+              <div className="hidden lg:block">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                  onClick={() => {
+                    setSidebarCollapsed((v) => {
+                      const next = !v;
+                      try {
+                        localStorage.setItem('pbr_sidebar_collapsed', String(next));
+                      } catch {
+                        // ignore
+                      }
+                      return next;
+                    });
+                  }}
+                >
+                  <PanelLeft className="h-4 w-4" />
+                </Button>
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-semibold tracking-tight text-foreground">
+                  {pageLabel}
+                </div>
+                <div className="truncate text-xs text-muted-foreground">
+                  {pathname === '/dashboard'
+                    ? 'Monthly overview and allocation'
+                    : 'Manage and review your data'}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full border bg-background/70 text-sm font-medium text-foreground hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      aria-label="User menu"
+                    >
+                      {initials ? <span className="select-none">{initials}</span> : <UserIcon className="h-4 w-4" />}
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuLabel>{userEmail ?? 'Account'}</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onSelect={() => router.push('/settings')}>Settings</DropdownMenuItem>
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>Theme</DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent>
+                        <DropdownMenuRadioGroup value={theme} onValueChange={(v) => updateTheme(v as any)}>
+                          <DropdownMenuRadioItem value="light">Light</DropdownMenuRadioItem>
+                          <DropdownMenuRadioItem value="dark">Dark</DropdownMenuRadioItem>
+                          <DropdownMenuRadioItem value="system">System</DropdownMenuRadioItem>
+                        </DropdownMenuRadioGroup>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onSelect={handleLogout}>Logout</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+          </nav>
+
+          <main className="mx-auto max-w-7xl px-3 py-8 sm:px-4 lg:px-6">{children}</main>
+        </div>
+      </div>
     </div>
   );
 }

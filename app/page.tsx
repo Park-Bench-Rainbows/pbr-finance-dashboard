@@ -6,7 +6,7 @@ export default function Home() {
   return (
     <div className="flex min-h-screen flex-col">
       <header className="border-b bg-background/60 backdrop-blur supports-[backdrop-filter]:bg-background/40">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-3 sm:px-4 lg:px-6">
           <div className="flex items-center gap-3">
             <BrandMark className="h-5 w-5" />
             <div className="text-[15px] font-semibold tracking-tight text-foreground">
@@ -24,7 +24,7 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="flex flex-1 flex-col items-center justify-center bg-background px-4 py-16">
+      <main className="flex flex-1 flex-col items-center justify-center bg-background px-3 py-16 sm:px-4 lg:px-6">
         <div className="mx-auto max-w-3xl text-center">
           <h1 className="text-5xl font-semibold tracking-tight text-foreground sm:text-6xl">
             Take Control of Your Finances
@@ -117,7 +117,7 @@ export default function Home() {
       </main>
 
       <footer className="border-t bg-background/60">
-        <div className="mx-auto max-w-7xl px-4 py-8 text-center text-sm text-muted-foreground sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl px-3 py-8 text-center text-sm text-muted-foreground sm:px-4 lg:px-6">
           <p className="text-muted-foreground">© 2026 Finance Dashboard.</p>
         </div>
       </footer>

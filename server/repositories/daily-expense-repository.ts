@@ -63,6 +63,16 @@ export class DailyExpenseRepository {
     return rows.map((r : any) => this.toDomain(r));
   }
 
+  async findForRange(userId: string, startISO: string, endISO: string): Promise<DailyExpense[]> {
+    const rows = await db
+      .select()
+      .from(dailyExpenses)
+      .where(and(eq(dailyExpenses.userId, userId), gte(dailyExpenses.purchaseDate, startISO), lte(dailyExpenses.purchaseDate, endISO)))
+      .orderBy(dailyExpenses.purchaseDate);
+
+    return rows.map((r: any) => this.toDomain(r));
+  }
+
   async findByUserId(userId: string): Promise<DailyExpense[]> {
     const rows = await db.select().from(dailyExpenses).where(eq(dailyExpenses.userId, userId));
     return rows.map((r : any) => this.toDomain(r));
