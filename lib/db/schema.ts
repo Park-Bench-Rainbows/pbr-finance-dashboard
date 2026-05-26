@@ -52,7 +52,7 @@ export const users = pgTable('users', {
 
 export const userSettings = pgTable('user_settings', {
   userId: uuid('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
-  baseCurrency: text('base_currency', { enum: supportedCurrencies }).notNull(),
+  baseCurrency: text('base_currency', { enum: supportedCurrencies }).notNull().default('TTD'),
   theme: text('theme', { enum: ['light', 'dark', 'system'] }).notNull().default('system'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

@@ -1,21 +1,18 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { BrandMark } from '@/components/brand/brand-mark';
 import { PageLoading } from '@/components/ui/page-loading';
+import { api, type CurrencyCode } from '@/lib/api-client';
+import { queryKeys } from '@/lib/query-keys';
 
-type CurrencyCode = 'TTD' | 'USD' | 'CAD';
 type ThemeMode = 'light' | 'dark' | 'system';
-
-interface UserSettings {
-  userId: string;
-  baseCurrency: CurrencyCode;
-  theme: ThemeMode;
-}
 
 const currencies: { value: CurrencyCode; label: string }[] = [
   { value: 'TTD', label: 'TTD (Trinidad and Tobago Dollar)' },
@@ -24,62 +21,39 @@ const currencies: { value: CurrencyCode; label: string }[] = [
 ];
 
 export default function SettingsPage() {
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
-  const [settings, setSettings] = useState<UserSettings | null>(null);
   const [baseCurrency, setBaseCurrency] = useState<CurrencyCode>('TTD');
   const [theme, setTheme] = useState<ThemeMode>('system');
+  const settingsQuery = useQuery({ queryKey: queryKeys.settings, queryFn: api.settings });
+  const updateMutation = useMutation({
+    mutationFn: () => api.updateSettings({ baseCurrency, theme }),
+    onSuccess: async (updated) => {
+      queryClient.setQueryData(queryKeys.settings, updated);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.settings });
+      setError(null);
+    },
+    onError: (e: any) => {
+      setError(e?.message ?? 'Failed to save settings');
+    },
+  });
 
   const baseCurrencyLabel = useMemo(() => {
     return currencies.find((c) => c.value === baseCurrency)?.label ?? baseCurrency;
   }, [baseCurrency]);
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await fetch('/api/settings');
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          throw new Error(body?.error ?? 'Failed to load settings');
-        }
-        const data: UserSettings = await res.json();
-        setSettings(data);
-        setBaseCurrency(data.baseCurrency);
-        setTheme(data.theme ?? 'system');
-      } catch (e: any) {
-        setError(e?.message ?? 'Failed to load settings');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    load();
-  }, []);
+    if (!settingsQuery.data) return;
+    setBaseCurrency(settingsQuery.data.baseCurrency);
+    setTheme(settingsQuery.data.theme ?? 'system');
+  }, [settingsQuery.data]);
 
   const handleSave = async () => {
-    setSaving(true);
     setError(null);
-    try {
-      const res = await fetch('/api/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ baseCurrency, theme }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body?.error ?? 'Failed to save settings');
-      }
-      const updated: UserSettings = await res.json();
-      setSettings(updated);
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to save settings');
-    } finally {
-      setSaving(false);
-    }
+    updateMutation.mutate();
   };
 
-  if (loading) return <PageLoading variant="simple" />;
+  if (settingsQuery.isLoading) return <PageLoading variant="simple" />;
 
   return (
     <div className="space-y-6">
@@ -99,7 +73,7 @@ export default function SettingsPage() {
             <div className="space-y-2">
               <Label htmlFor="baseCurrency">Base currency</Label>
               <Select value={baseCurrency} onValueChange={(v) => setBaseCurrency(v as CurrencyCode)}>
-                <SelectTrigger id="baseCurrency" className="max-w-md">
+                <SelectTrigger id="baseCurrency" className="w-full max-w-md">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -118,7 +92,7 @@ export default function SettingsPage() {
             <div className="space-y-2">
               <Label htmlFor="theme">Theme</Label>
               <Select value={theme} onValueChange={(v) => setTheme(v as ThemeMode)}>
-                <SelectTrigger id="theme" className="max-w-md">
+                <SelectTrigger id="theme" className="w-full max-w-md">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -141,11 +115,13 @@ export default function SettingsPage() {
             <div className="flex items-center gap-3">
               <Button
                 onClick={handleSave}
-                disabled={!settings}
+                disabled={!settingsQuery.data}
                 variant="brand"
-                isLoading={saving}
+                className="w-full sm:w-auto"
+                isLoading={updateMutation.isPending}
                 loadingText="Saving…"
               >
+                <Save className="h-4 w-4" />
                 Save
               </Button>
             </div>

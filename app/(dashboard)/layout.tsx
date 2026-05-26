@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { ThemeManager } from '@/components/theme/theme-manager';
 import { SidebarNav, useDashboardNavLabel } from '@/components/navigation/sidebar-nav';
 import { BrandMark } from '@/components/brand/brand-mark';
+import { AppQueryProvider } from '@/components/providers/query-provider';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -112,7 +113,8 @@ export default function DashboardLayout({
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <AppQueryProvider>
+    <div className="min-h-screen overflow-x-hidden bg-background">
       <ThemeManager />
 
       <div className="flex min-h-screen">
@@ -120,7 +122,7 @@ export default function DashboardLayout({
           <SidebarNav collapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
         </div>
 
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 overflow-x-hidden">
           <nav className="sticky top-0 z-40 border-b bg-background/60 backdrop-blur supports-[backdrop-filter]:bg-background/40">
             <div className="mx-auto flex h-16 max-w-7xl items-center gap-3 px-3 sm:px-4 lg:px-6">
               <div className="lg:hidden">
@@ -131,7 +133,7 @@ export default function DashboardLayout({
                     </Button>
                   </DialogTrigger>
                   <DialogContent
-                    className="fixed left-0 top-0 h-[100dvh] w-[320px] translate-x-0 translate-y-0 rounded-none border-r p-0 sm:max-w-none"
+                    className="fixed left-0 top-0 flex h-[100dvh] w-[320px] translate-x-0 translate-y-0 flex-col gap-0 rounded-none border-r p-0 sm:max-w-none"
                     showCloseButton={false}
                   >
                     <div className="flex h-16 items-center justify-between border-b px-4">
@@ -147,7 +149,11 @@ export default function DashboardLayout({
                         </Button>
                       </DialogClose>
                     </div>
-                    <SidebarNav collapsed={false} showHeader={false} className="w-full border-r-0 bg-background" />
+                    <SidebarNav
+                      collapsed={false}
+                      showHeader={false}
+                      className="!h-auto w-full flex-1 overflow-y-auto border-r-0 bg-white shadow-none dark:bg-sidebar"
+                    />
                   </DialogContent>
                 </Dialog>
               </div>
@@ -218,9 +224,10 @@ export default function DashboardLayout({
             </div>
           </nav>
 
-          <main className="mx-auto max-w-7xl px-3 py-8 sm:px-4 lg:px-6">{children}</main>
+          <main className="mx-auto w-full max-w-7xl px-3 py-5 sm:px-4 sm:py-8 lg:px-6">{children}</main>
         </div>
       </div>
     </div>
+    </AppQueryProvider>
   );
 }

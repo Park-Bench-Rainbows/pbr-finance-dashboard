@@ -1,12 +1,16 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PageLoading } from '@/components/ui/page-loading';
+import { api, type DailyCategory } from '@/lib/api-client';
+import { queryKeys } from '@/lib/query-keys';
 
-type Category = 'food' | 'gas' | 'coffee' | 'groceries' | 'dining' | 'transport' | 'other';
+type Category = DailyCategory;
 
 const categories: { value: Category; label: string }[] = [
   { value: 'food', label: 'Food' },
@@ -18,61 +22,40 @@ const categories: { value: Category; label: string }[] = [
   { value: 'other', label: 'Other' },
 ];
 
-interface Budget {
-  id: string;
-  category: Category;
-  monthlyLimit: number;
-  effectiveMonth: string; // YYYY-MM
-}
-
 function currentMonth(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
 export default function BudgetsPage() {
+  const queryClient = useQueryClient();
   const [month, setMonth] = useState(currentMonth());
   const [budgets, setBudgets] = useState<Record<Category, number>>({
     food: 0, gas: 0, coffee: 0, groceries: 0, dining: 0, transport: 0, other: 0,
   });
-  const [loading, setLoading] = useState(true);
-  const [savingCategory, setSavingCategory] = useState<Category | null>(null);
+  const budgetsQuery = useQuery({ queryKey: queryKeys.budgets(month), queryFn: () => api.budgets(month) });
+  const saveMutation = useMutation({
+    mutationFn: (category: Category) => api.upsertBudget({ month, category, monthlyLimit: budgets[category] }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.budgets(month) });
+      await queryClient.invalidateQueries({ queryKey: ['summary'] });
+    },
+  });
 
   useEffect(() => {
-    load();
-  }, [month]);
-
-  const load = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/budgets?month=${month}`);
-      if (!res.ok) return;
-      const rows: Budget[] = await res.json();
-      const next = { ...budgets };
-      for (const row of rows) next[row.category] = row.monthlyLimit;
-      setBudgets(next);
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false);
-    }
-  };
+    const next: Record<Category, number> = {
+      food: 0, gas: 0, coffee: 0, groceries: 0, dining: 0, transport: 0, other: 0,
+    };
+    for (const row of budgetsQuery.data ?? []) next[row.category] = row.monthlyLimit;
+    setBudgets(next);
+  }, [budgetsQuery.data]);
 
   const saveCategory = async (category: Category) => {
-    if (savingCategory) return;
-    setSavingCategory(category);
-    try {
-      await fetch('/api/budgets', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ month, category, monthlyLimit: budgets[category] }),
-      });
-    } finally {
-      setSavingCategory(null);
-    }
+    if (saveMutation.isPending) return;
+    saveMutation.mutate(category);
   };
 
-  if (loading) {
+  if (budgetsQuery.isLoading) {
     return <PageLoading variant="simple" />;
   }
 
@@ -86,7 +69,7 @@ export default function BudgetsPage() {
       </div>
 
       <div className="rounded-lg border bg-card text-card-foreground p-6 space-y-4">
-        <div className="space-y-2 max-w-xs">
+        <div className="max-w-xs space-y-2">
           <Label htmlFor="month">Month</Label>
           <Input id="month" value={month} onChange={(e) => setMonth(e.target.value)} placeholder="YYYY-MM" />
         </div>
@@ -95,7 +78,7 @@ export default function BudgetsPage() {
           {categories.map((cat) => (
             <div key={cat.value} className="rounded-lg border p-4 space-y-2">
               <div className="font-medium">{cat.label}</div>
-              <div className="flex items-end gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                 <div className="flex-1 space-y-1">
                   <Label htmlFor={`budget-${cat.value}`}>Monthly limit</Label>
                   <Input
@@ -108,10 +91,12 @@ export default function BudgetsPage() {
                   />
                 </div>
                 <Button
+                  className="w-full sm:w-auto"
                   onClick={() => saveCategory(cat.value)}
-                  isLoading={savingCategory === cat.value}
+                  isLoading={saveMutation.isPending && saveMutation.variables === cat.value}
                   loadingText="Saving…"
                 >
+                  <Save className="h-4 w-4" />
                   Save
                 </Button>
               </div>

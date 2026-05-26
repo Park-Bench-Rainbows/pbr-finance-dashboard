@@ -16,6 +16,7 @@ const createDailyExpenseSchema = z.object({
 const querySchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/, 'Invalid month format (use YYYY-MM)').optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format (use YYYY-MM-DD)').optional(),
+  latest: z.coerce.number().int().min(1).max(50).optional(),
 });
 
 export async function GET(request: NextRequest) {
@@ -27,13 +28,16 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month') ?? undefined;
     const date = searchParams.get('date') ?? undefined;
-    const parsed = querySchema.safeParse({ month, date });
+    const latest = searchParams.get('latest') ?? undefined;
+    const parsed = querySchema.safeParse({ month, date, latest });
     if (!parsed.success) {
       return NextResponse.json({ error: 'Validation failed', details: parsed.error.issues }, { status: 400 });
     }
 
     const service = new DailyExpenseService();
-    const rows = parsed.data.date
+    const rows = parsed.data.latest
+      ? await service.getLatest(user.id, parsed.data.latest)
+      : parsed.data.date
       ? await service.getForDate(user.id, parsed.data.date)
       : parsed.data.month
         ? await service.getForMonth(user.id, parsed.data.month)

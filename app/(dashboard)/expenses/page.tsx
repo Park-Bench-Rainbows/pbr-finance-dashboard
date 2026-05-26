@@ -1,32 +1,25 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
+import type { ColumnDef } from '@tanstack/react-table';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Pencil, Plus, Save, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { DataTable, DataTableColumnHeader } from '@/components/ui/data-table';
+import { TableActionButton } from '@/components/ui/table-action-button';
+import { MobileRowCard } from '@/components/ui/mobile-row-card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts';
 import { PageLoading } from '@/components/ui/page-loading';
-
-interface Expense {
-  id: string;
-  name: string;
-  amount: number;
-  baseCurrency: 'TTD' | 'USD' | 'CAD';
-  originalAmount: number;
-  originalCurrency: 'TTD' | 'USD' | 'CAD';
-  frequency: 'monthly' | 'annual';
-  category: string;
-  startDate: string;
-  endDate?: string;
-}
-
-type CurrencyCode = 'TTD' | 'USD' | 'CAD';
+import { api, type CurrencyCode, type ExpenseCategory, type RecurringExpense, type RecurringExpensePayload } from '@/lib/api-client';
+import { queryKeys } from '@/lib/query-keys';
+import { useIsMobile } from '@/components/hooks/use-mobile';
 type MonthlySummary = { expensesByCategory: Record<string, number> };
 
 const n = (value: unknown): number => {
@@ -73,11 +66,11 @@ const categories = [
 ];
 
 const categoryBadgeVariant: Record<string, React.ComponentProps<typeof Badge>["variant"]> = {
-  housing: "info",
+  housing: "teal",
   utilities: "warning",
   subscriptions: "purple",
-  insurance: "teal",
-  transportation: "success",
+  insurance: "info",
+  transportation: "info",
   other: "default",
 };
 
@@ -87,14 +80,9 @@ function currentMonth(): string {
 }
 
 export default function ExpensesPage() {
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
-  const [baseCurrency, setBaseCurrency] = useState<CurrencyCode>('TTD');
-  const [summary, setSummary] = useState<MonthlySummary>({ expensesByCategory: {} });
+  const [editingExpense, setEditingExpense] = useState<RecurringExpense | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     amount: '',
@@ -104,110 +92,57 @@ export default function ExpensesPage() {
     startDate: '',
     endDate: '',
   });
+  const isMobile = useIsMobile();
 
-  useEffect(() => {
-    load();
-  }, []);
+  const settingsQuery = useQuery({ queryKey: queryKeys.settings, queryFn: api.settings });
+  const expensesQuery = useQuery({ queryKey: queryKeys.recurringExpenses, queryFn: api.recurringExpenses });
+  const summaryQuery = useQuery({ queryKey: queryKeys.summary(currentMonth()), queryFn: () => api.summary(currentMonth()) });
+  const baseCurrency = settingsQuery.data?.baseCurrency ?? 'TTD';
+  const expenses = expensesQuery.data ?? [];
+  const summary: MonthlySummary = { expensesByCategory: summaryQuery.data?.expensesByCategory ?? {} };
 
-  const load = async () => {
-    await Promise.all([fetchSettings(), fetchExpenses(), fetchSummary()]);
-  };
+  const saveMutation = useMutation({
+    mutationFn: ({ id, payload }: { id?: string; payload: RecurringExpensePayload }) =>
+      id ? api.updateRecurringExpense(id, payload) : api.createRecurringExpense(payload),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.recurringExpenses });
+      await queryClient.invalidateQueries({ queryKey: ['summary'] });
+      setDialogOpen(false);
+      resetForm();
+    },
+  });
 
-  const fetchSettings = async () => {
-    try {
-      const response = await fetch('/api/settings');
-      if (response.ok) {
-        const data = await response.json();
-        setBaseCurrency(data.baseCurrency as CurrencyCode);
-        setFormData((prev) => ({ ...prev, currency: data.baseCurrency as CurrencyCode }));
-      }
-    } catch (error) {
-      console.error('Error fetching settings:', error);
-    }
-  };
-
-  const fetchExpenses = async () => {
-    try {
-      const response = await fetch('/api/expenses');
-      if (response.ok) {
-        const data = await response.json();
-        setExpenses(data);
-      }
-    } catch (error) {
-      console.error('Error fetching expenses:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchSummary = async () => {
-    try {
-      const month = currentMonth();
-      const response = await fetch(`/api/summary?month=${month}`);
-      if (response.ok) {
-        const data = await response.json();
-        setSummary({ expensesByCategory: data.expensesByCategory ?? {} });
-      }
-    } catch (error) {
-      console.error('Error fetching summary:', error);
-    }
-  };
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.deleteRecurringExpense(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.recurringExpenses });
+      await queryClient.invalidateQueries({ queryKey: ['summary'] });
+    },
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (saving) return;
+    if (saveMutation.isPending) return;
 
-    const payload = {
+    const payload: RecurringExpensePayload = {
       name: formData.name,
       amount: parseFloat(formData.amount),
       currency: formData.currency,
       frequency: formData.frequency,
-      category: formData.category,
+      category: formData.category as ExpenseCategory,
       startDate: formData.startDate,
       endDate: formData.endDate || undefined,
     };
 
-    setSaving(true);
-    try {
-      const url = editingExpense ? `/api/expenses/${editingExpense.id}` : '/api/expenses';
-      const method = editingExpense ? 'PATCH' : 'POST';
-
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (response.ok) {
-        await fetchExpenses();
-        setDialogOpen(false);
-        resetForm();
-      }
-    } catch (error) {
-      console.error('Error saving expense:', error);
-    } finally {
-      setSaving(false);
-    }
+    saveMutation.mutate({ id: editingExpense?.id, payload });
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this expense?')) return;
-    if (deletingId) return;
-
-    setDeletingId(id);
-    try {
-      const response = await fetch(`/api/expenses/${id}`, { method: 'DELETE' });
-      if (response.ok) {
-        await fetchExpenses();
-      }
-    } catch (error) {
-      console.error('Error deleting expense:', error);
-    } finally {
-      setDeletingId(null);
-    }
+    deleteMutation.mutate(id);
   };
 
-  const handleEdit = (expense: Expense) => {
+  const handleEdit = (expense: RecurringExpense) => {
     setEditingExpense(expense);
     setFormData({
       name: expense.name,
@@ -239,17 +174,92 @@ export default function ExpensesPage() {
     resetForm();
   };
 
-  if (loading) {
+  const columns = useMemo<ColumnDef<RecurringExpense>[]>(
+    () => [
+      {
+        accessorKey: 'name',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Name" />,
+        cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
+      },
+      {
+        accessorKey: 'amount',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Amount" />,
+        cell: ({ row }) => (
+          <div className="flex flex-col">
+            <span>{formatCurrency(row.original.amount, baseCurrency)}</span>
+            {row.original.originalCurrency !== baseCurrency && (
+              <span className="text-xs text-muted-foreground">
+                Entered {formatCurrency(row.original.originalAmount, row.original.originalCurrency)}
+              </span>
+            )}
+          </div>
+        ),
+      },
+      {
+        accessorKey: 'frequency',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Frequency" />,
+        cell: ({ row }) => <span className="capitalize">{row.original.frequency}</span>,
+      },
+      {
+        accessorFn: (row) => categories.find((category) => category.value === row.category)?.label ?? row.category,
+        id: 'category',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Category" />,
+        cell: ({ row }) => (
+          <Badge variant={categoryBadgeVariant[row.original.category] ?? 'default'}>
+            {categories.find((category) => category.value === row.original.category)?.label ?? row.original.category}
+          </Badge>
+        ),
+      },
+      {
+        accessorKey: 'startDate',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Start Date" />,
+        cell: ({ row }) => formatISODate(row.original.startDate),
+      },
+      {
+        accessorKey: 'endDate',
+        header: ({ column }) => <DataTableColumnHeader column={column} title="End Date" />,
+        cell: ({ row }) => (row.original.endDate ? formatISODate(row.original.endDate) : 'Ongoing'),
+      },
+      {
+        id: 'actions',
+        header: () => <div className="text-right">Actions</div>,
+        enableSorting: false,
+        cell: ({ row }) => (
+          <div className="flex justify-end gap-1">
+            <TableActionButton
+              label={`Edit ${row.original.name}`}
+              icon={<Pencil className="h-4 w-4" />}
+              onClick={() => handleEdit(row.original)}
+              disabled={deleteMutation.isPending}
+            />
+            <TableActionButton
+              label={`Delete ${row.original.name}`}
+              icon={<Trash2 className="h-4 w-4" />}
+              destructive
+              onClick={() => handleDelete(row.original.id)}
+              isLoading={deleteMutation.isPending && deleteMutation.variables === row.original.id}
+            />
+          </div>
+        ),
+      },
+    ],
+    [baseCurrency, deleteMutation.isPending, deleteMutation.variables]
+  );
+
+  if (expensesQuery.isLoading) {
     return <PageLoading variant="table" />;
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-3xl font-bold">Recurring Expenses</h1>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
-            <Button onClick={resetForm}>Add Expense</Button>
+            <Button onClick={resetForm}>
+              <Plus className="h-4 w-4" />
+              Add Expense
+            </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
@@ -361,7 +371,8 @@ export default function ExpensesPage() {
                 <Button type="button" variant="outline" onClick={handleDialogClose}>
                   Cancel
                 </Button>
-                <Button type="submit" isLoading={saving} loadingText={editingExpense ? 'Updating…' : 'Adding…'}>
+                <Button type="submit" isLoading={saveMutation.isPending} loadingText={editingExpense ? 'Updating…' : 'Adding…'}>
+                  <Save className="h-4 w-4" />
                   {editingExpense ? 'Update' : 'Add'}
                 </Button>
               </DialogFooter>
@@ -377,8 +388,11 @@ export default function ExpensesPage() {
           </CardHeader>
           <CardContent>
             {Object.keys(summary.expensesByCategory ?? {}).length > 0 ? (
-                <ChartContainer config={expensesCategoryChartConfig} className="min-h-[260px] w-full">
-                  <ResponsiveContainer width="100%" height={260}>
+                <ChartContainer
+                  config={expensesCategoryChartConfig}
+                  className="h-[240px] w-full sm:h-[260px] [&_.recharts-pie-label-text]:hidden sm:[&_.recharts-pie-label-text]:block"
+                >
+                  <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
                         data={Object.entries(summary.expensesByCategory).map(([category, amount]) => ({
@@ -388,10 +402,10 @@ export default function ExpensesPage() {
                         }))}
                         cx="50%"
                         cy="50%"
-                        outerRadius={90}
+                        outerRadius={isMobile ? 76 : 90}
                         dataKey="value"
                         labelLine={false}
-                        label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
+                        label={isMobile ? false : ({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
                       >
                         {Object.entries(summary.expensesByCategory).map(([category]) => (
                           <Cell
@@ -458,75 +472,38 @@ export default function ExpensesPage() {
         </Card>
       </div>
 
-      {expenses.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-8 text-center">
-          <p className="text-muted-foreground">No expenses yet. Add your first one!</p>
-        </div>
-      ) : (
-        <div className="rounded-lg border bg-card text-card-foreground">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Amount</TableHead>
-                <TableHead>Frequency</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Start Date</TableHead>
-                <TableHead>End Date</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {expenses.map((expense) => (
-                <TableRow key={expense.id}>
-                  <TableCell className="font-medium">{expense.name}</TableCell>
-                  <TableCell>
-                    <div className="flex flex-col">
-                      <span>{formatCurrency(expense.amount, baseCurrency)}</span>
-                      {expense.originalCurrency !== baseCurrency && (
-                        <span className="text-xs text-muted-foreground">
-                          Entered {formatCurrency(expense.originalAmount, expense.originalCurrency)}
-                        </span>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="capitalize">{expense.frequency}</TableCell>
-                  <TableCell>
-                    <Badge variant={categoryBadgeVariant[expense.category] ?? 'default'}>
-                      {categories.find((c) => c.value === expense.category)?.label ?? expense.category}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{formatISODate(expense.startDate)}</TableCell>
-                  <TableCell>
-                    {expense.endDate ? formatISODate(expense.endDate) : 'Ongoing'}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleEdit(expense)}
-                      className="mr-2"
-                      disabled={Boolean(deletingId)}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(expense.id)}
-                      className="text-red-600 hover:text-red-700"
-                      isLoading={deletingId === expense.id}
-                      loadingText="Deleting…"
-                    >
-                      Delete
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      <DataTable
+        columns={columns}
+        data={expenses}
+        searchPlaceholder="Search recurring expenses..."
+        emptyMessage="No expenses yet. Add your first one!"
+        mobileCard={(expense) => (
+          <MobileRowCard
+            title={expense.name}
+            amountNode={formatCurrency(expense.amount, baseCurrency)}
+            contextNode={
+              <Badge variant={categoryBadgeVariant[expense.category] ?? 'default'}>
+                {categories.find((category) => category.value === expense.category)?.label ?? expense.category}
+              </Badge>
+            }
+            metaItems={[
+              { label: 'Frequency', value: <span className="capitalize">{expense.frequency}</span> },
+              { label: 'Start', value: formatISODate(expense.startDate) },
+            ]}
+            secondaryText={
+              expense.originalCurrency !== baseCurrency
+                ? `Entered ${formatCurrency(expense.originalAmount, expense.originalCurrency)}`
+                : null
+            }
+            editIcon={Pencil}
+            deleteIcon={Trash2}
+            onEdit={() => handleEdit(expense)}
+            onDelete={() => handleDelete(expense.id)}
+            editDisabled={deleteMutation.isPending}
+            deleteLoading={deleteMutation.isPending && deleteMutation.variables === expense.id}
+          />
+        )}
+      />
     </div>
   );
 }

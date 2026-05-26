@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CircleDollarSign } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -267,6 +267,7 @@ export function SavingsTargetCarousel({
                   </a>
                   <div className="flex items-center gap-2">
                     <Button type="button" variant="outline" size="sm" onClick={() => onQuickAdd(t)}>
+                      <CircleDollarSign className="h-4 w-4" />
                       Quick add
                     </Button>
                   </div>
