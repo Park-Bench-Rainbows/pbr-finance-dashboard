@@ -211,13 +211,13 @@ export default function DashboardPage() {
               className="block h-full rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Go to Income"
             >
-              <Card className="h-full flex flex-col border-white/10 dark:border-white/5 border-t-2 border-t-emerald-500/70 dark:border-t-emerald-400/40 bg-gradient-to-br from-emerald-500/30 via-teal-500/18 to-teal-500/10 transition-colors hover:from-emerald-500/35 hover:via-teal-500/22 hover:to-teal-500/14">
+              <Card className="h-full flex flex-col border-0 bg-gradient-to-br from-[#11998E] to-[#38EF7D] transition-all hover:shadow-lg hover:shadow-[#11998E]/20">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Income</CardTitle>
+                  <CardTitle className="text-sm font-medium text-white">Total Income</CardTitle>
                 </CardHeader>
                 <CardContent className="flex-1">
                   <div
-                    className="text-2xl font-bold text-green-600 tabular-nums truncate"
+                    className="text-2xl font-bold text-white tabular-nums truncate"
                     title={formatCurrency(n(summary.totalIncome), baseCurrency)}
                   >
                     {formatCompactCurrency(n(summary.totalIncome), baseCurrency)}
@@ -231,36 +231,36 @@ export default function DashboardPage() {
               className="block h-full rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Go to Expenses"
             >
-              <Card className="h-full flex flex-col border-white/10 dark:border-white/5 border-t-2 border-t-rose-500/70 dark:border-t-rose-400/40 bg-gradient-to-br from-rose-500/28 via-orange-500/16 to-orange-500/10 transition-colors hover:from-rose-500/33 hover:via-orange-500/20 hover:to-orange-500/14">
+              <Card className="h-full flex flex-col border-0 bg-gradient-to-br from-[#F12711] to-[#F5AF19] transition-all hover:shadow-lg hover:shadow-[#F12711]/20">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Expenses</CardTitle>
+                  <CardTitle className="text-sm font-medium text-white">Total Expenses</CardTitle>
                 </CardHeader>
                 <CardContent className="flex-1 space-y-3">
                   <div
-                    className="text-2xl font-bold text-red-600 tabular-nums truncate"
+                    className="text-2xl font-bold text-white tabular-nums truncate"
                     title={formatCurrency(n(summary.totalExpenses), baseCurrency)}
                   >
                     {formatCompactCurrency(n(summary.totalExpenses), baseCurrency)}
                   </div>
 
-                  <div className="rounded-md border p-2">
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <div className="rounded-md border border-white/30 bg-white/10 p-2 backdrop-blur-sm">
+                    <div className="flex items-center justify-between text-xs text-white/90">
                       <span>Budget status</span>
                       {totalBudget > 0 ? (
-                        <span className={isOverBudget ? 'text-red-600' : ''}>
+                        <span className={isOverBudget ? 'font-semibold text-white' : ''}>
                           {formatCompactCurrency(totalBudgetRemaining, baseCurrency)} left
                         </span>
                       ) : (
                         <span>Not set</span>
                       )}
                     </div>
-                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/20">
                       <div
-                        className={`h-full ${isOverBudget ? 'bg-red-600' : 'bg-blue-600'}`}
+                        className={`h-full ${isOverBudget ? 'bg-white' : 'bg-white/80'}`}
                         style={{ width: `${Math.round(budgetProgress * 100)}%` }}
                       />
                     </div>
-                    <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
+                    <div className="mt-2 flex items-center justify-between text-[11px] text-white/70">
                       <span title={formatCurrency(totalBudgetSpent, baseCurrency)}>
                         Spent {formatCompactCurrency(totalBudgetSpent, baseCurrency)}
                       </span>
@@ -278,13 +278,13 @@ export default function DashboardPage() {
               className="block h-full rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Go to Savings"
             >
-              <Card className="h-full flex flex-col border-white/10 dark:border-white/5 border-t-2 border-t-blue-500/70 dark:border-t-blue-400/40 bg-gradient-to-br from-blue-500/28 via-violet-500/16 to-violet-500/10 transition-colors hover:from-blue-500/33 hover:via-violet-500/20 hover:to-violet-500/14">
+              <Card className="h-full flex flex-col border-0 bg-gradient-to-br from-[#1CB5E0] to-[#000851] transition-all hover:shadow-lg hover:shadow-[#1CB5E0]/20">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Savings</CardTitle>
+                  <CardTitle className="text-sm font-medium text-white">Total Savings</CardTitle>
                 </CardHeader>
                 <CardContent className="flex-1">
                   <div
-                    className="text-2xl font-bold text-blue-600 tabular-nums truncate"
+                    className="text-2xl font-bold text-white tabular-nums truncate"
                     title={formatCurrency(n(summary.totalSavings), baseCurrency)}
                   >
                     {formatCompactCurrency(n(summary.totalSavings), baseCurrency)}
@@ -298,13 +298,13 @@ export default function DashboardPage() {
               className="block h-full rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Go to Daily expenses"
             >
-              <Card className="h-full flex flex-col border-white/10 dark:border-white/5 border-t-2 border-t-amber-500/70 dark:border-t-amber-400/45 bg-gradient-to-br from-amber-500/28 via-orange-500/16 to-orange-500/10 transition-colors hover:from-amber-500/33 hover:via-orange-500/20 hover:to-orange-500/14">
+              <Card className="h-full flex flex-col border-0 bg-gradient-to-br from-[#D4145A] to-[#FBB03B] transition-all hover:shadow-lg hover:shadow-[#D4145A]/20">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Daily Spending</CardTitle>
+                  <CardTitle className="text-sm font-medium text-white">Daily Spending</CardTitle>
                 </CardHeader>
                 <CardContent className="flex-1">
                   <div
-                    className="text-2xl font-bold text-amber-600 tabular-nums truncate"
+                    className="text-2xl font-bold text-white tabular-nums truncate"
                     title={formatCurrency(n(summary.totalDailySpend), baseCurrency)}
                   >
                     {formatCompactCurrency(n(summary.totalDailySpend), baseCurrency)}
@@ -318,20 +318,18 @@ export default function DashboardPage() {
               className="block h-full rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Remaining disposable details"
             >
-              <Card className="h-full flex flex-col border-white/10 dark:border-white/5 border-t-2 border-t-teal-500/70 dark:border-t-teal-400/45 bg-gradient-to-br from-teal-500/26 via-sky-500/16 to-sky-500/10 transition-colors hover:from-teal-500/31 hover:via-sky-500/20 hover:to-sky-500/14">
+              <Card className="h-full flex flex-col border-0 bg-gradient-to-br from-[#654EA3] to-[#EAAFC8] transition-all hover:shadow-lg hover:shadow-[#654EA3]/20">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Remaining Disposable</CardTitle>
+                  <CardTitle className="text-sm font-medium text-white">Remaining Disposable</CardTitle>
                 </CardHeader>
                 <CardContent className="flex-1">
                   <div
-                    className={`text-2xl font-bold tabular-nums truncate ${
-                      n(summary.remainingDisposable) >= 0 ? 'text-green-600' : 'text-red-600'
-                    }`}
+                    className="text-2xl font-bold tabular-nums truncate text-white"
                     title={formatCurrency(n(summary.remainingDisposable), baseCurrency)}
                   >
                     {formatCompactCurrency(n(summary.remainingDisposable), baseCurrency)}
                   </div>
-                  <div className="text-xs text-muted-foreground tabular-nums truncate" title={formatCurrency(n(summary.disposableIncome), baseCurrency)}>
+                  <div className="text-xs text-white/70 tabular-nums truncate" title={formatCurrency(n(summary.disposableIncome), baseCurrency)}>
                     Planned: {formatCompactCurrency(n(summary.disposableIncome), baseCurrency)}
                   </div>
                 </CardContent>
