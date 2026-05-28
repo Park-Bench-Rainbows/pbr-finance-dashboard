@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { createClient } from '@/lib/supabase/client';
@@ -17,15 +17,16 @@ const FloatingLines = dynamic(() => import('@/components/animation/FloatingLines
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const msg = new URLSearchParams(window.location.search).get('error');
+    const msg = searchParams.get('error');
     if (msg) setError(msg);
-  }, []);
+  }, [searchParams]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,7 +119,9 @@ export default function LoginPage() {
                 <GoogleIcon className="h-4 w-4" />
                 Continue with Google
               </Button>
-              <Button
+
+              {/* TODO: re-enable Apple login once we have the necessary credentials set up */}
+              {/* <Button
                 type="button"
                 variant="outline"
                 className="h-10 w-full justify-center shadow-sm transition-shadow hover:shadow-md"
@@ -127,7 +130,8 @@ export default function LoginPage() {
               >
                 <AppleIcon className="h-4 w-4 text-foreground" />
                 Continue with Apple
-              </Button>
+              </Button> */}
+
             </div>
             <div className="relative py-1">
               <div className="absolute inset-0 flex items-center">
