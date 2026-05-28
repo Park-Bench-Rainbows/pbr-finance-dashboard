@@ -1,5 +1,4 @@
 import { cn } from "@/lib/utils";
-import Image from "next/image";
 
 type BrandMarkProps = {
   className?: string;
@@ -13,8 +12,7 @@ export function BrandMark({ className, title = "Hey Bud" }: BrandMarkProps) {
       src="/brand-mark2.png"
       alt={title}
       title={title}
-      className={cn("inline-block object-contain")}
-      style={{ width: "180px", height: "50px" }}
+      className={cn("block h-10 w-auto object-contain", className)}
     
       // width={200}
       // height={200}
