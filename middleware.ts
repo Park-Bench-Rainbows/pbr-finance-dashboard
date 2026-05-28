@@ -37,7 +37,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Public routes that don't require authentication
-  const publicRoutes = ['/', '/login', '/signup', '/auth/callback'];
+  const publicRoutes = ['/', '/login', '/signup', '/auth/callback', '/manifest.webmanifest'];
   const isPublicRoute = publicRoutes.includes(pathname);
 
   // If user is not logged in and trying to access protected route, redirect to login
@@ -66,6 +66,6 @@ export const config = {
      * - favicon.ico (favicon file)
      * - public files (public folder)
      */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|webmanifest)$).*)',
   ],
 };
