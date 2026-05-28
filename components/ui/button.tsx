@@ -12,7 +12,7 @@ const buttonVariants = cva(
       variant: {
         default: "bg-primary text-primary-foreground hover:bg-primary/90",
         brand:
-          "text-white shadow-sm [background-image:var(--pbr-gradient)] hover:opacity-[0.92] active:opacity-[0.88]",
+          "bg-[var(--pbr-orange)] text-white shadow-sm shadow-black/10 hover:bg-[color-mix(in_srgb,var(--pbr-orange)_92%,black)] hover:shadow-md hover:shadow-black/15 active:bg-[color-mix(in_srgb,var(--pbr-orange)_86%,black)] active:shadow-sm dark:shadow-black/30 dark:hover:shadow-black/35",
         destructive:
           "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
         outline:

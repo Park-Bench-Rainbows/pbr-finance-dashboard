@@ -84,15 +84,6 @@
   --pbr-purple: #8b5cf6;
   --pbr-wood: #a16207;
 
-  --pbr-gradient: linear-gradient(
-    90deg,
-    #f97316 0%,
-    #facc15 25%,
-    #22c55e 50%,
-    #3b82f6 75%,
-    #8b5cf6 100%
-  );
-
   /* Charts (keep restrained) */
   --chart-1: var(--pbr-blue);
   --chart-2: var(--pbr-green);

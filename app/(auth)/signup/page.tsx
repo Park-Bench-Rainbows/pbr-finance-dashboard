@@ -3,12 +3,18 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
+
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { BrandMark } from '@/components/brand/brand-mark';
+import { GoogleIcon } from '@/components/icons/google';
+import { AppleIcon } from '@/components/icons/apple';
+
+const FloatingLines = dynamic(() => import('@/components/animation/FloatingLines'), { ssr: false });
 
 export default function SignupPage() {
   const router = useRouter();
@@ -18,6 +24,29 @@ export default function SignupPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  const handleOAuthSignup = async (provider: 'google' | 'apple') => {
+    setError('');
+    setLoading(true);
+
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+
+      if (error) {
+        setError(error.message);
+        setLoading(false);
+      }
+    } catch {
+      setError('An unexpected error occurred');
+      setLoading(false);
+    }
+  };
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,7 +80,7 @@ export default function SignupPage() {
 
       setSuccess(true);
       setLoading(false);
-      
+
       // Redirect to login after 2 seconds
       setTimeout(() => {
         router.push('/login');
@@ -64,15 +93,29 @@ export default function SignupPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <BrandMark className="h-5 w-5" />
+      <div className="pointer-events-none absolute inset-0 z-0">
+        <FloatingLines
+          enabledWaves={['top', 'middle', 'bottom']}
+          lineCount={8}
+          lineDistance={27}
+          bendRadius={8}
+          bendStrength={-2}
+          interactive={false}
+          parallax={true}
+          animationSpeed={1}
+          linesGradient={['#f97316', '#6f6f6f', '#8b5cf6']}
+        />
+      </div>
+
+      <Card className="relative z-10 w-full max-w-md bg-card/90 shadow-lg shadow-black/10 dark:shadow-black/40">
+        <CardHeader className="items-center justify-items-center text-center">
+          <BrandMark className="mx-auto h-12" />
+          <div className="space-y-1">
             <CardTitle>Sign Up</CardTitle>
+            <CardDescription>Create your finance dashboard account</CardDescription>
           </div>
-          <CardDescription>Create your finance dashboard account</CardDescription>
         </CardHeader>
-        <form onSubmit={handleSignup}>
+        <form onSubmit={handleSignup} className="space-y-6">
           <CardContent className="space-y-4">
             {error && (
               <div className="rounded-lg border border-red-200/70 bg-red-50 p-3 text-sm text-red-800">
@@ -84,6 +127,36 @@ export default function SignupPage() {
                 Account created! Check your email for confirmation. Redirecting to login...
               </div>
             )}
+            <div className="space-y-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10 w-full justify-center shadow-sm transition-shadow hover:shadow-md"
+                disabled={loading || success}
+                onClick={() => handleOAuthSignup('google')}
+              >
+                <GoogleIcon className="h-4 w-4" />
+                Continue with Google
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10 w-full justify-center shadow-sm transition-shadow hover:shadow-md"
+                disabled={loading || success}
+                onClick={() => handleOAuthSignup('apple')}
+              >
+                <AppleIcon className="h-4 w-4 text-foreground" />
+                Continue with Apple
+              </Button>
+            </div>
+            <div className="relative py-1">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground">Or</span>
+              </div>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
