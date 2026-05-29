@@ -46,6 +46,16 @@ export class ExpenseRepository {
     return results.map(this.toDomain);
   }
 
+  async findById(userId: string, id: string): Promise<RecurringExpense | null> {
+    const rows = await db
+      .select()
+      .from(recurringExpenses)
+      .where(and(eq(recurringExpenses.userId, userId), eq(recurringExpenses.id, id)))
+      .limit(1);
+
+    return rows[0] ? this.toDomain(rows[0]) : null;
+  }
+
   /**
    * Find expenses that are active for a specific month
    * Active = startDate <= month AND (endDate >= month OR endDate IS NULL)

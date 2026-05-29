@@ -7,6 +7,7 @@ import { ExpenseRepository } from '../../repositories/expense-repository';
 import { SavingsPlanService } from '../savings-plan-service';
 import { DailyExpenseService } from '../daily-expense-service';
 import { BudgetService } from '../budget-service';
+import { DebtRepository } from '../../repositories/debt-repository';
 
 describe('SummaryService', () => {
   let service: SummaryService;
@@ -15,6 +16,7 @@ describe('SummaryService', () => {
   let mockSavingsService: SavingsPlanService;
   let mockDailyExpenseService: DailyExpenseService;
   let mockBudgetService: BudgetService;
+  let mockDebtRepo: DebtRepository;
   const userId = 'test-user-123';
   const month = '2026-01';
 
@@ -43,12 +45,17 @@ describe('SummaryService', () => {
       computeRemainingByCategory: vi.fn().mockResolvedValue({}),
     } as any;
 
+    mockDebtRepo = {
+      findTransactionsForMonth: vi.fn().mockResolvedValue([]),
+    } as any;
+
     service = new SummaryService(
       mockIncomeRepo,
       mockExpenseRepo,
       mockSavingsService,
       mockDailyExpenseService,
-      mockBudgetService
+      mockBudgetService,
+      mockDebtRepo
     );
   });
 
@@ -61,6 +68,10 @@ describe('SummaryService', () => {
       expect(summary.totalExpenses).toBe(0);
       expect(summary.totalSavings).toBe(0);
       expect(summary.totalDailySpend).toBe(0);
+      expect(summary.debtPaymentsTotal).toBe(0);
+      expect(summary.borrowedFundsTotal).toBe(0);
+      expect(summary.debtAdjustmentsNet).toBe(0);
+      expect(summary.cashflowAfterDebt).toBe(0);
       expect(summary.remainingDisposable).toBe(0);
       expect(summary.disposableIncome).toBe(0);
       expect(summary.expensesByCategory).toEqual({});
@@ -526,6 +537,75 @@ describe('SummaryService', () => {
         insurance: 100, // 1200 / 12
         transportation: 150,
       });
+    });
+
+    it('should separate debt cashflow from lifestyle spending', async () => {
+      vi.mocked(mockIncomeRepo.findActiveForMonth).mockResolvedValue([
+        {
+          id: '1',
+          userId,
+          name: 'Salary',
+          amount: 4000,
+          frequency: 'monthly',
+          startDate: new Date('2025-01-01'),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ]);
+      vi.mocked(mockExpenseRepo.findActiveForMonth).mockResolvedValue([
+        {
+          id: '1',
+          userId,
+          name: 'Rent',
+          amount: 1200,
+          frequency: 'monthly',
+          category: 'housing',
+          startDate: new Date('2025-01-01'),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ]);
+      vi.mocked(mockDebtRepo.findTransactionsForMonth).mockResolvedValue([
+        {
+          id: 'd1',
+          userId,
+          debtId: 'debt-1',
+          sourceType: 'debt',
+          direction: 'inflow',
+          category: 'borrowed_funds',
+          balanceEffect: 'none',
+          description: 'Borrowed funds',
+          transactionDate: new Date('2026-01-05'),
+          amount: 500,
+          baseCurrency: 'TTD',
+          originalAmount: 500,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        {
+          id: 'd2',
+          userId,
+          debtId: 'debt-1',
+          sourceType: 'debt',
+          direction: 'outflow',
+          category: 'debt_payment',
+          balanceEffect: 'decrease',
+          description: 'Debt payment',
+          transactionDate: new Date('2026-01-10'),
+          amount: 100,
+          baseCurrency: 'TTD',
+          originalAmount: 100,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ] as any);
+
+      const summary = await service.getMonthlySummary(userId, month);
+
+      expect(summary.debtPaymentsTotal).toBe(100);
+      expect(summary.borrowedFundsTotal).toBe(500);
+      expect(summary.cashflowAfterDebt).toBe(3200);
+      expect(summary.disposableIncome).toBe(2800);
     });
   });
 });

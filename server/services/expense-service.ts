@@ -15,6 +15,10 @@ export class ExpenseService {
     return this.repository.findByUserId(userId);
   }
 
+  async getById(userId: string, id: string): Promise<RecurringExpense | null> {
+    return this.repository.findById(userId, id);
+  }
+
   /**
    * Create a new expense
    */

@@ -8,6 +8,10 @@ export interface MonthlySummary {
   totalExpenses: number; // in dollars
   totalSavings: number; // in dollars
   totalDailySpend: number; // in dollars
+  debtPaymentsTotal: number; // in dollars
+  borrowedFundsTotal: number; // in dollars
+  debtAdjustmentsNet: number; // in dollars
+  cashflowAfterDebt: number; // in dollars
   remainingDisposable: number; // in dollars (disposableIncome - totalDailySpend)
   disposableIncome: number; // in dollars
   expensesByCategory: Partial<Record<ExpenseCategory, number>>; // sparse - only categories with expenses
