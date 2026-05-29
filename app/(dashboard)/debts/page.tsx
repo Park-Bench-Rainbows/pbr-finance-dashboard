@@ -14,9 +14,11 @@ import { DataTable, DataTableColumnHeader } from '@/components/ui/data-table';
 import { MobileRowCard } from '@/components/ui/mobile-row-card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 import { PageLoading } from '@/components/ui/page-loading';
 import { api, type CurrencyCode, type Debt, type DebtAdjustmentPayload, type DebtPayload, type DebtPaymentPayload, type RecurringExpense } from '@/lib/api-client';
 import { queryKeys } from '@/lib/query-keys';
+import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts';
 
 const currencies: CurrencyCode[] = ['TTD', 'USD', 'CAD'];
 const debtTypes = [
@@ -73,6 +75,15 @@ const progressPercent = (debt: Debt) => {
   return Math.max(0, Math.min(1, (base - debt.currentBalance) / base));
 };
 
+const balanceByStatusChartConfig = {
+  active: { label: 'Active', color: 'var(--chart-1)' },
+  partially_paid: { label: 'Partially paid', color: 'var(--chart-2)' },
+  overdue: { label: 'Overdue', color: 'var(--chart-3)' },
+  paid: { label: 'Paid', color: 'var(--chart-4)' },
+  written_off: { label: 'Written off', color: 'var(--chart-5)' },
+  cancelled: { label: 'Cancelled', color: '#64748b' },
+} satisfies ChartConfig;
+
 export default function DebtsPage() {
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -120,6 +131,27 @@ export default function DebtsPage() {
   const baseCurrency = settingsQuery.data?.baseCurrency ?? 'TTD';
   const debts = debtsQuery.data ?? [];
   const recurringExpenses = expensesQuery.data ?? [];
+  const balanceByStatusData = useMemo(
+    () =>
+      [
+        { status: 'active', value: debts.filter((debt) => debt.status === 'active').reduce((sum, debt) => sum + debt.currentBalance, 0) },
+        {
+          status: 'partially_paid',
+          value: debts.filter((debt) => debt.status === 'partially_paid').reduce((sum, debt) => sum + debt.currentBalance, 0),
+        },
+        { status: 'overdue', value: debts.filter((debt) => debt.status === 'overdue').reduce((sum, debt) => sum + debt.currentBalance, 0) },
+        { status: 'paid', value: debts.filter((debt) => debt.status === 'paid').reduce((sum, debt) => sum + debt.currentBalance, 0) },
+        {
+          status: 'written_off',
+          value: debts.filter((debt) => debt.status === 'written_off').reduce((sum, debt) => sum + debt.currentBalance, 0),
+        },
+        {
+          status: 'cancelled',
+          value: debts.filter((debt) => debt.status === 'cancelled').reduce((sum, debt) => sum + debt.currentBalance, 0),
+        },
+      ].filter((row) => row.value > 0),
+    [debts]
+  );
 
   const createMutation = useMutation({
     mutationFn: (payload: DebtPayload) => api.createDebt(payload),
@@ -562,6 +594,58 @@ export default function DebtsPage() {
           <CardContent className="text-2xl font-bold tabular-nums">{debts.filter((debt) => debt.status !== 'paid').length}</CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Outstanding by status</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {balanceByStatusData.length > 0 ? (
+            <ChartContainer
+              config={balanceByStatusChartConfig}
+              className="h-[280px] w-full sm:h-[320px] [&_.recharts-pie-label-text]:hidden sm:[&_.recharts-pie-label-text]:block"
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={balanceByStatusData.map((entry) => ({
+                      ...entry,
+                      name: balanceByStatusChartConfig[entry.status as keyof typeof balanceByStatusChartConfig]?.label ?? entry.status,
+                      fill: balanceByStatusChartConfig[entry.status as keyof typeof balanceByStatusChartConfig]?.color ?? '#64748b',
+                    }))}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={76}
+                    outerRadius={104}
+                    paddingAngle={4}
+                    label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
+                  >
+                    {balanceByStatusData.map((entry) => (
+                      <Cell
+                        key={entry.status}
+                        fill={balanceByStatusChartConfig[entry.status as keyof typeof balanceByStatusChartConfig]?.color ?? '#64748b'}
+                      />
+                    ))}
+                  </Pie>
+                  <ChartTooltip
+                    content={
+                      <ChartTooltipContent
+                        formatter={(value) => formatCurrency(value as number, baseCurrency)}
+                        indicator="dot"
+                      />
+                    }
+                  />
+                  <ChartLegend content={<ChartLegendContent />} />
+                </PieChart>
+              </ResponsiveContainer>
+            </ChartContainer>
+          ) : (
+            <div className="flex h-[280px] items-center justify-center text-muted-foreground">No outstanding balances to display</div>
+          )}
+        </CardContent>
+      </Card>
 
       <DataTable
         columns={columns}

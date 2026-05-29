@@ -15,9 +15,11 @@ import { DataTable, DataTableColumnHeader } from '@/components/ui/data-table';
 import { MobileRowCard } from '@/components/ui/mobile-row-card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 import { PageLoading } from '@/components/ui/page-loading';
 import { api, type CurrencyCode, type LoanRepaymentPayload, type LoanTransaction } from '@/lib/api-client';
 import { queryKeys } from '@/lib/query-keys';
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, XAxis, YAxis } from 'recharts';
 
 const currencies: { value: CurrencyCode; label: string }[] = [
   { value: 'TTD', label: 'TTD' },
@@ -46,6 +48,11 @@ const formatISODate = (value?: string) => {
 const statusLabel = (status: string) =>
   status.replaceAll('_', ' ').replace(/\b\w/g, (s) => s.toUpperCase());
 
+const loanTrajectoryChartConfig = {
+  outstanding: { label: 'Outstanding', color: 'var(--chart-3)' },
+  repaid: { label: 'Repaid', color: 'var(--chart-2)' },
+} satisfies ChartConfig;
+
 export default function LoanDetailPage() {
   const params = useParams() as { id?: string | string[] };
   const loanId = Array.isArray(params.id) ? params.id[0] : params.id ?? '';
@@ -67,6 +74,32 @@ export default function LoanDetailPage() {
   const baseCurrency = settingsQuery.data?.baseCurrency ?? 'TTD';
   const loan = loanQuery.data ?? null;
   const originationTransaction = loan?.transactions?.find((tx) => tx.direction === 'outflow') ?? null;
+  const repaymentTrajectoryData = useMemo(() => {
+    if (!loan) return [];
+    const sortedRepayments = (loan.transactions ?? [])
+      .filter((tx) => tx.category === 'loan_repayment')
+      .sort((a, b) => new Date(a.transactionDate).getTime() - new Date(b.transactionDate).getTime());
+
+    const points: { date: string; outstanding: number; repaid: number }[] = [
+      {
+        date: loan.loanDate,
+        outstanding: loan.basePrincipalAmount,
+        repaid: 0,
+      },
+    ];
+
+    let repaid = 0;
+    for (const tx of sortedRepayments) {
+      repaid = Math.min(loan.basePrincipalAmount, repaid + tx.amount);
+      points.push({
+        date: tx.transactionDate,
+        outstanding: Math.max(loan.basePrincipalAmount - repaid, 0),
+        repaid,
+      });
+    }
+
+    return points;
+  }, [loan]);
 
   const repaymentMutation = useMutation({
     mutationFn: (payload: LoanRepaymentPayload) => api.recordLoanRepayment(loanId, payload),
@@ -258,6 +291,38 @@ export default function LoanDetailPage() {
               <div className="font-medium">Unavailable</div>
             )}
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Repayment trajectory</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {repaymentTrajectoryData.length > 0 ? (
+            <ChartContainer config={loanTrajectoryChartConfig} className="h-[280px] w-full sm:h-[320px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart accessibilityLayer data={repaymentTrajectoryData} margin={{ left: 8, right: 8 }}>
+                  <CartesianGrid vertical={false} />
+                  <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={10} tickFormatter={(value) => String(value).slice(5)} />
+                  <YAxis hide={false} tickLine={false} axisLine={false} />
+                  <ChartTooltip
+                    content={
+                      <ChartTooltipContent
+                        formatter={(value) => formatCurrency(value as number, baseCurrency)}
+                        indicator="dot"
+                      />
+                    }
+                  />
+                  <ChartLegend content={<ChartLegendContent />} />
+                  <Line type="monotone" dataKey="outstanding" stroke="var(--color-outstanding)" strokeWidth={2.5} dot={false} />
+                  <Line type="monotone" dataKey="repaid" stroke="var(--color-repaid)" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </ChartContainer>
+          ) : (
+            <div className="flex h-[280px] items-center justify-center text-muted-foreground">No repayment trajectory to display</div>
+          )}
         </CardContent>
       </Card>
 

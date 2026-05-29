@@ -287,7 +287,7 @@ export default function DailyExpensesPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-3xl font-bold">Daily Expenses</h1>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <div className="w-full sm:w-56">
+          <div className="w-full">
             <Select
               value={month}
               onValueChange={(value) => {

@@ -166,6 +166,7 @@ export type TrendsPoint = {
   totalDailySpend: number;
   debtPaymentsTotal?: number;
   borrowedFundsTotal?: number;
+  cashflowAfterDebt?: number;
   dailySpendByCategory: Record<string, number>;
 };
 

@@ -14,9 +14,11 @@ import { DataTable, DataTableColumnHeader } from '@/components/ui/data-table';
 import { MobileRowCard } from '@/components/ui/mobile-row-card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 import { PageLoading } from '@/components/ui/page-loading';
 import { api, type CurrencyCode, type Loan, type LoanPayload, type LoanRepaymentPayload } from '@/lib/api-client';
 import { queryKeys } from '@/lib/query-keys';
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis } from 'recharts';
 
 const currencies: { value: CurrencyCode; label: string }[] = [
   { value: 'TTD', label: 'TTD' },
@@ -45,6 +47,10 @@ const formatISODate = (value?: string) => {
 const statusLabel = (status: string) =>
   status.replaceAll('_', ' ').replace(/\b\w/g, (s) => s.toUpperCase());
 
+const outstandingByBorrowerChartConfig = {
+  outstanding: { label: 'Outstanding', color: 'var(--chart-1)' },
+} satisfies ChartConfig;
+
 export default function LoansPage() {
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -70,6 +76,17 @@ export default function LoansPage() {
   const loansQuery = useQuery({ queryKey: queryKeys.loans, queryFn: api.loans });
   const baseCurrency = settingsQuery.data?.baseCurrency ?? 'TTD';
   const loans = loansQuery.data ?? [];
+  const outstandingByBorrowerData = useMemo(
+    () =>
+      [...loans]
+        .sort((a, b) => b.outstandingAmount - a.outstandingAmount)
+        .slice(0, 6)
+        .map((loan) => ({
+          borrowerName: loan.borrowerName,
+          outstanding: loan.outstandingAmount,
+        })),
+    [loans]
+  );
 
   const createMutation = useMutation({
     mutationFn: (payload: LoanPayload) => api.createLoan(payload),
@@ -370,6 +387,42 @@ export default function LoansPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Outstanding by borrower</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {outstandingByBorrowerData.length > 0 ? (
+            <ChartContainer config={outstandingByBorrowerChartConfig} className="h-[280px] w-full sm:h-[320px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart accessibilityLayer data={outstandingByBorrowerData} layout="vertical" margin={{ left: 8, right: 12 }}>
+                  <CartesianGrid horizontal={false} />
+                  <XAxis type="number" tickLine={false} axisLine={false} />
+                  <YAxis
+                    type="category"
+                    dataKey="borrowerName"
+                    tickLine={false}
+                    axisLine={false}
+                    width={120}
+                  />
+                  <ChartTooltip
+                    content={
+                      <ChartTooltipContent
+                        formatter={(value) => formatCurrency(value as number, baseCurrency)}
+                        indicator="dot"
+                      />
+                    }
+                  />
+                  <Bar dataKey="outstanding" fill="var(--color-outstanding)" radius={6} />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartContainer>
+          ) : (
+            <div className="flex h-[280px] items-center justify-center text-muted-foreground">No loan balances to display</div>
+          )}
+        </CardContent>
+      </Card>
 
       <DataTable
         columns={columns}

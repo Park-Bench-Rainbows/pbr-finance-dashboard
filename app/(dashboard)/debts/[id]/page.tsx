@@ -15,9 +15,11 @@ import { DataTable, DataTableColumnHeader } from '@/components/ui/data-table';
 import { MobileRowCard } from '@/components/ui/mobile-row-card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 import { PageLoading } from '@/components/ui/page-loading';
 import { api, type CurrencyCode, type DebtAdjustmentPayload, type DebtPaymentPayload, type DebtTransaction, type DebtPayoffPlanPayload, type RecurringExpense } from '@/lib/api-client';
 import { queryKeys } from '@/lib/query-keys';
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, XAxis, YAxis } from 'recharts';
 
 const currencies: CurrencyCode[] = ['TTD', 'USD', 'CAD'];
 const adjustmentCategories = [
@@ -50,6 +52,11 @@ const formatISODate = (value?: string) => {
 
 const statusLabel = (status: string) =>
   status.replaceAll('_', ' ').replace(/\b\w/g, (s) => s.toUpperCase());
+
+const debtBurnDownChartConfig = {
+  balance: { label: 'Balance', color: 'var(--chart-3)' },
+  paid: { label: 'Paid', color: 'var(--chart-2)' },
+} satisfies ChartConfig;
 
 export default function DebtDetailPage() {
   const params = useParams() as { id?: string | string[] };
@@ -93,6 +100,53 @@ export default function DebtDetailPage() {
   const linkedRecurringExpense = debt?.linkedRecurringExpenseId
     ? recurringExpenses.find((expense) => expense.id === debt.linkedRecurringExpenseId) ?? null
     : null;
+  const debtBurnDownData = useMemo(() => {
+    if (!debt) return [];
+
+    const transactions = [...(debt.transactions ?? [])].sort(
+      (a, b) => new Date(a.transactionDate).getTime() - new Date(b.transactionDate).getTime()
+    );
+    const paymentTotal = transactions
+      .filter((tx) => tx.category === 'debt_payment')
+      .reduce((sum, tx) => sum + tx.amount, 0);
+    const adjustmentNet = transactions
+      .filter((tx) => tx.direction === 'adjustment')
+      .reduce((sum, tx) => {
+        if (tx.balanceEffect === 'increase') return sum + tx.amount;
+        if (tx.balanceEffect === 'decrease') return sum - tx.amount;
+        return sum;
+      }, 0);
+
+    const startingBalance = Math.max(debt.currentBalance + paymentTotal - adjustmentNet, 0);
+    const points: { date: string; balance: number; paid: number }[] = [
+      {
+        date: debt.startDate,
+        balance: startingBalance,
+        paid: 0,
+      },
+    ];
+
+    let balance = startingBalance;
+    let paid = 0;
+    for (const tx of transactions) {
+      if (tx.category === 'debt_payment') {
+        paid = Math.min(startingBalance, paid + tx.amount);
+        balance = Math.max(0, balance - tx.amount);
+      } else if (tx.balanceEffect === 'increase') {
+        balance += tx.amount;
+      } else if (tx.balanceEffect === 'decrease') {
+        balance = Math.max(0, balance - tx.amount);
+      }
+
+      points.push({
+        date: tx.transactionDate,
+        balance,
+        paid,
+      });
+    }
+
+    return points;
+  }, [debt]);
 
   const paymentMutation = useMutation({
     mutationFn: (payload: DebtPaymentPayload) => api.recordDebtPayment(debtId, payload),
@@ -412,6 +466,38 @@ export default function DebtDetailPage() {
             <div className="text-muted-foreground">Notes</div>
             <div className="font-medium">{debt.notes ?? 'None'}</div>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Payoff burn-down</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {debtBurnDownData.length > 0 ? (
+            <ChartContainer config={debtBurnDownChartConfig} className="h-[280px] w-full sm:h-[320px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart accessibilityLayer data={debtBurnDownData} margin={{ left: 8, right: 8 }}>
+                  <CartesianGrid vertical={false} />
+                  <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={10} tickFormatter={(value) => String(value).slice(5)} />
+                  <YAxis hide={false} tickLine={false} axisLine={false} />
+                  <ChartTooltip
+                    content={
+                      <ChartTooltipContent
+                        formatter={(value) => formatCurrency(value as number, baseCurrency)}
+                        indicator="dot"
+                      />
+                    }
+                  />
+                  <ChartLegend content={<ChartLegendContent />} />
+                  <Line type="monotone" dataKey="balance" stroke="var(--color-balance)" strokeWidth={2.5} dot={false} />
+                  <Line type="monotone" dataKey="paid" stroke="var(--color-paid)" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </ChartContainer>
+          ) : (
+            <div className="flex h-[280px] items-center justify-center text-muted-foreground">No payoff history to display</div>
+          )}
         </CardContent>
       </Card>
 

@@ -68,12 +68,19 @@ const incomeExpenseChartConfig = {
   income: { label: 'Income', color: 'var(--chart-1)' },
   expenses: { label: 'Expenses', color: 'var(--chart-3)' },
   savings: { label: 'Savings', color: 'var(--chart-2)' },
+  debtPaymentsTotal: { label: 'Debt payments', color: 'var(--chart-4)' },
+  borrowedFundsTotal: { label: 'Borrowed funds', color: 'var(--chart-5)' },
+  cashflowAfterDebt: { label: 'Cash after debt', color: '#64748b' },
 } satisfies ChartConfig;
 
 const allocationChartConfig = {
   expenses: { label: 'Expenses', color: allocationColors.expenses },
   savings: { label: 'Savings', color: allocationColors.savings },
   disposable: { label: 'Disposable', color: allocationColors.disposable },
+  dailySpend: { label: 'Daily spend', color: 'var(--chart-5)' },
+  debtPayments: { label: 'Debt payments', color: 'var(--chart-4)' },
+  borrowedFunds: { label: 'Borrowed funds', color: 'var(--chart-2)' },
+  remainingCash: { label: 'Remaining cash', color: '#64748b' },
 } satisfies ChartConfig;
 
 const sumValues = (obj: Record<string, unknown> | undefined) =>
@@ -179,7 +186,10 @@ export default function DashboardPage() {
     ? [
         { name: 'Expenses', value: n(summary.totalExpenses), fill: allocationColors.expenses },
         { name: 'Savings', value: n(summary.totalSavings), fill: allocationColors.savings },
-        { name: 'Disposable', value: Math.max(n(summary.disposableIncome), 0), fill: allocationColors.disposable },
+        { name: 'Daily Spend', value: n(summary.totalDailySpend), fill: 'var(--chart-5)' },
+        { name: 'Debt Payments', value: n(summary.debtPaymentsTotal), fill: 'var(--chart-4)' },
+        { name: 'Borrowed Funds', value: n(summary.borrowedFundsTotal), fill: 'var(--chart-2)' },
+        { name: 'Remaining Cash', value: Math.max(n(summary.cashflowAfterDebt), 0), fill: '#64748b' },
       ]
     : [];
 
@@ -647,7 +657,7 @@ export default function DashboardPage() {
 
                 <Card>
                   <CardHeader>
-                    <CardTitle>Income Allocation</CardTitle>
+                    <CardTitle>Cash Flow Allocation</CardTitle>
                   </CardHeader>
                   <CardContent>
                     {isSensitiveValuesVisible ? (
@@ -659,7 +669,10 @@ export default function DashboardPage() {
                           <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                               <Pie
-                                data={incomeAllocationData.map((d) => ({ ...d, fill: `var(--color-${d.name.toLowerCase()})` }))}
+                                data={incomeAllocationData.map((d) => ({
+                                  ...d,
+                                  fill: d.fill,
+                                }))}
                                 cx="50%"
                                 cy="50%"
                                 innerRadius={isMobile ? 48 : 70}
@@ -670,7 +683,7 @@ export default function DashboardPage() {
                                 label={isMobile ? false : ({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
                               >
                                 {incomeAllocationData.map((entry) => (
-                                  <Cell key={entry.name} fill={`var(--color-${entry.name.toLowerCase()})`} />
+                                  <Cell key={entry.name} fill={entry.fill} />
                                 ))}
                               </Pie>
                               <ChartTooltip
@@ -693,7 +706,7 @@ export default function DashboardPage() {
                     ) : (
                       <PrivacyChartPlaceholder
                         title="Sensitive chart hidden"
-                        description="Reveal sensitive values to view the allocation breakdown."
+                        description="Reveal sensitive values to view the cash flow allocation breakdown."
                       />
                     )}
                   </CardContent>
@@ -702,7 +715,7 @@ export default function DashboardPage() {
             ) : (
               <Card className="md:col-span-2">
                 <CardHeader>
-                  <CardTitle>YTD Monthly Trend</CardTitle>
+                  <CardTitle>YTD Cash Flow Trend</CardTitle>
                 </CardHeader>
                 <CardContent>
                   {!isSensitiveValuesVisible ? (
@@ -739,6 +752,27 @@ export default function DashboardPage() {
                             dot={false}
                           />
                           <Line type="monotone" dataKey="totalDailySpend" stroke="var(--color-savings)" strokeWidth={2} dot={false} />
+                          <Line
+                            type="monotone"
+                            dataKey="debtPaymentsTotal"
+                            stroke="var(--color-debtPaymentsTotal)"
+                            strokeWidth={2}
+                            dot={false}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="borrowedFundsTotal"
+                            stroke="var(--color-borrowedFundsTotal)"
+                            strokeWidth={2}
+                            dot={false}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="cashflowAfterDebt"
+                            stroke="var(--color-cashflowAfterDebt)"
+                            strokeWidth={2.5}
+                            dot={false}
+                          />
                         </LineChart>
                       </ResponsiveContainer>
                     </ChartContainer>

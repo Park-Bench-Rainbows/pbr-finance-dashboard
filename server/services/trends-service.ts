@@ -10,6 +10,7 @@ export type MonthlyTrendPoint = {
   totalDailySpend: number;
   debtPaymentsTotal: number;
   borrowedFundsTotal: number;
+  cashflowAfterDebt: number;
   dailySpendByCategory: Record<string, number>;
 };
 
@@ -107,6 +108,12 @@ export class TrendsService {
         return sum;
       }, 0);
       const debtTotals = debtTransactionsByMonth.get(month) ?? { debtPaymentsTotal: 0, borrowedFundsTotal: 0 };
+      const cashflowAfterDebt =
+        totalIncome +
+        debtTotals.borrowedFundsTotal -
+        totalRecurringExpenses -
+        (spendTotalByMonth.get(month) ?? 0) -
+        debtTotals.debtPaymentsTotal;
 
       const catMap = spendByMonthCategory.get(month);
       const dailySpendByCategory: Record<string, number> = {};
@@ -121,6 +128,7 @@ export class TrendsService {
         totalDailySpend: spendTotalByMonth.get(month) ?? 0,
         debtPaymentsTotal: debtTotals.debtPaymentsTotal,
         borrowedFundsTotal: debtTotals.borrowedFundsTotal,
+        cashflowAfterDebt,
         dailySpendByCategory,
       });
     }
