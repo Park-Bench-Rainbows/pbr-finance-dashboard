@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   CalendarDays,
   LayoutDashboard,
+  HandCoins,
   PiggyBank,
   PieChart,
   PanelLeft,
@@ -30,6 +31,7 @@ const navItems: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/income', label: 'Income', icon: Wallet },
   { href: '/expenses', label: 'Expenses', icon: Receipt },
+  { href: '/loans', label: 'Loans', icon: HandCoins },
   { href: '/budgets', label: 'Budgets', icon: PieChart },
   { href: '/savings', label: 'Savings', icon: PiggyBank },
   { href: '/daily-expenses', label: 'Daily', icon: CalendarDays },
@@ -39,7 +41,7 @@ const navItems: NavItem[] = [
 export function useDashboardNavLabel() {
   const pathname = usePathname();
   return useMemo(() => {
-    const hit = navItems.find((item) => item.href === pathname);
+    const hit = navItems.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
     return hit?.label ?? 'Finance Dashboard';
   }, [pathname]);
 }

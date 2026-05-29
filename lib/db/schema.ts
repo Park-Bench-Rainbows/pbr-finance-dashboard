@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, date, timestamp, numeric, uniqueIndex, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, integer, date, timestamp, numeric, uniqueIndex, boolean, index } from 'drizzle-orm/pg-core';
 
 export const supportedCurrencies = ['TTD', 'USD', 'CAD'] as const;
 export type CurrencyCode = (typeof supportedCurrencies)[number];
@@ -145,3 +145,58 @@ export const savingsTransactions = pgTable('savings_transactions', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
+
+export const loanStatuses = ['active', 'partially_paid', 'paid', 'overdue', 'written_off', 'cancelled'] as const;
+export const loanTransactionDirections = ['outflow', 'inflow'] as const;
+export const loanTransactionCategories = ['money_lent', 'loan_repayment'] as const;
+export const transactionSourceTypes = ['loan'] as const;
+
+export const loans = pgTable('loans', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  borrowerName: text('borrower_name').notNull(),
+  description: text('description').notNull(),
+  originalCurrency: text('original_currency', { enum: supportedCurrencies }).notNull(),
+  principalAmountCents: integer('principal_amount_cents').notNull(),
+  baseCurrency: text('base_currency', { enum: supportedCurrencies }).notNull(),
+  basePrincipalAmountCents: integer('base_principal_amount_cents').notNull(),
+  amountRepaidCents: integer('amount_repaid_cents').notNull().default(0),
+  outstandingAmountCents: integer('outstanding_amount_cents').notNull(),
+  fxRate: numeric('fx_rate', { precision: 18, scale: 8 }).notNull(),
+  fxAsOf: timestamp('fx_as_of', { withTimezone: true }).notNull(),
+  fxSource: text('fx_source').notNull(),
+  loanDate: date('loan_date').notNull(),
+  dueDate: date('due_date'),
+  status: text('status', { enum: loanStatuses }).notNull().default('active'),
+  notes: text('notes'),
+  createdExpenseTransactionId: uuid('created_expense_transaction_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  loansUserIdIdx: index('loans_user_id_idx').on(table.userId),
+  loansUserStatusIdx: index('loans_user_status_idx').on(table.userId, table.status),
+  loansDueDateIdx: index('loans_due_date_idx').on(table.userId, table.dueDate),
+}));
+
+export const loanTransactions = pgTable('loan_transactions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  loanId: uuid('loan_id').notNull().references(() => loans.id, { onDelete: 'cascade' }),
+  sourceType: text('source_type', { enum: transactionSourceTypes }).notNull().default('loan'),
+  direction: text('direction', { enum: loanTransactionDirections }).notNull(),
+  category: text('category', { enum: loanTransactionCategories }).notNull(),
+  description: text('description').notNull(),
+  transactionDate: date('transaction_date').notNull(),
+  originalCurrency: text('original_currency', { enum: supportedCurrencies }).notNull(),
+  originalAmountCents: integer('original_amount_cents').notNull(),
+  baseCurrency: text('base_currency', { enum: supportedCurrencies }).notNull(),
+  baseAmountCents: integer('base_amount_cents').notNull(),
+  fxRate: numeric('fx_rate', { precision: 18, scale: 8 }).notNull(),
+  fxAsOf: timestamp('fx_as_of', { withTimezone: true }).notNull(),
+  fxSource: text('fx_source').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  loanTransactionsUserDateIdx: index('loan_transactions_user_date_idx').on(table.userId, table.transactionDate),
+  loanTransactionsLoanDateIdx: index('loan_transactions_loan_date_idx').on(table.loanId, table.transactionDate),
+}));

@@ -158,7 +158,7 @@ export default function DashboardLayout({
                 </Dialog>
               </div>
 
-              <div className="hidden lg:block">
+              {/* <div className="hidden lg:block">
                 <Button
                   type="button"
                   variant="outline"
@@ -178,7 +178,7 @@ export default function DashboardLayout({
                 >
                   <PanelLeft className="h-4 w-4" />
                 </Button>
-              </div>
+              </div> */}
 
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-semibold tracking-tight text-foreground">

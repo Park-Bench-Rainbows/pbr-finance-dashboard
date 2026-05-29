@@ -37,11 +37,24 @@ const formatCurrency = (amount: number, currency: CurrencyCode) => {
 };
 
 const formatCompactCurrency = (amount: number, currency: CurrencyCode) => {
+  const absAmount = Math.abs(amount);
+  
+  // For values under 1000, show 2 decimal places
+  if (absAmount < 1000) {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  }
+  
+  // For 1K+, use compact notation with no decimals
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency,
     notation: 'compact',
-    maximumFractionDigits: 1,
+    maximumFractionDigits: 0,
   }).format(amount);
 };
 
@@ -263,7 +276,7 @@ export default function DashboardPage() {
               className="block h-full rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Go to Income"
             >
-              <Card className="h-full flex flex-col border-0 bg-gradient-to-br from-[#11998E] to-[#38EF7D] transition-all hover:shadow-lg hover:shadow-[#11998E]/20">
+              <Card className="h-full flex flex-col border-0 bg-linear-to-br from-[#11998E] to-[#38EF7D] transition-all hover:shadow-lg hover:shadow-[#11998E]/20">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium text-white">Total Income</CardTitle>
                 </CardHeader>
@@ -284,7 +297,7 @@ export default function DashboardPage() {
               className="block h-full rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Go to Expenses"
             >
-              <Card className="h-full flex flex-col border-0 bg-gradient-to-br from-[#F12711] to-[#F5AF19] transition-all hover:shadow-lg hover:shadow-[#F12711]/20">
+              <Card className="h-full flex flex-col border-0 bg-linear-to-br from-[#F12711] to-[#F5AF19] transition-all hover:shadow-lg hover:shadow-[#F12711]/20">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium text-white">Total Expenses</CardTitle>
                 </CardHeader>
@@ -350,7 +363,7 @@ export default function DashboardPage() {
               className="block h-full rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Go to Savings"
             >
-              <Card className="h-full flex flex-col border-0 bg-gradient-to-br from-[#1CB5E0] to-[#000851] transition-all hover:shadow-lg hover:shadow-[#1CB5E0]/20">
+              <Card className="h-full flex flex-col border-0 bg-linear-to-br from-[#1CB5E0] to-[#000851] transition-all hover:shadow-lg hover:shadow-[#1CB5E0]/20">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium text-white">Total Savings</CardTitle>
                 </CardHeader>
@@ -371,7 +384,7 @@ export default function DashboardPage() {
               className="block h-full rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Go to Daily expenses"
             >
-              <Card className="h-full flex flex-col border-0 bg-gradient-to-br from-[#D4145A] to-[#FBB03B] transition-all hover:shadow-lg hover:shadow-[#D4145A]/20">
+              <Card className="h-full flex flex-col border-0 bg-linear-to-br from-[#D4145A] to-[#FBB03B] transition-all hover:shadow-lg hover:shadow-[#D4145A]/20">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium text-white">Daily Spending</CardTitle>
                 </CardHeader>
@@ -392,7 +405,7 @@ export default function DashboardPage() {
               className="block h-full rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Remaining disposable details"
             >
-              <Card className="h-full flex flex-col border-0 bg-gradient-to-br from-[#654EA3] to-[#EAAFC8] transition-all hover:shadow-lg hover:shadow-[#654EA3]/20">
+              <Card className="h-full flex flex-col border-0 bg-linear-to-br from-[#654EA3] to-[#EAAFC8] transition-all hover:shadow-lg hover:shadow-[#654EA3]/20">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium text-white">Remaining Disposable</CardTitle>
                 </CardHeader>

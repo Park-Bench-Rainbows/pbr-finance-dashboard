@@ -98,6 +98,48 @@ export type SavingsTransaction = {
   baseCurrency: CurrencyCode;
 };
 
+export type LoanStatus = 'active' | 'partially_paid' | 'paid' | 'overdue' | 'written_off' | 'cancelled';
+export type LoanTransactionDirection = 'outflow' | 'inflow';
+export type LoanTransactionCategory = 'money_lent' | 'loan_repayment';
+
+export type LoanTransaction = {
+  id: string;
+  loanId: string;
+  sourceType: 'loan';
+  direction: LoanTransactionDirection;
+  category: LoanTransactionCategory;
+  description: string;
+  transactionDate: string;
+  amount: number;
+  baseCurrency: CurrencyCode;
+  originalAmount: number;
+  originalCurrency: CurrencyCode;
+  fxRate: string;
+  fxAsOf: string;
+  fxSource: string;
+};
+
+export type Loan = {
+  id: string;
+  borrowerName: string;
+  description: string;
+  originalCurrency: CurrencyCode;
+  principalAmount: number;
+  baseCurrency: CurrencyCode;
+  basePrincipalAmount: number;
+  amountRepaid: number;
+  outstandingAmount: number;
+  fxRate: string;
+  fxAsOf: string;
+  fxSource: string;
+  loanDate: string;
+  dueDate?: string;
+  status: LoanStatus;
+  notes?: string;
+  createdExpenseTransactionId?: string;
+  transactions?: LoanTransaction[];
+};
+
 export type MonthlySummary = {
   month: string;
   totalIncome: number;
@@ -180,6 +222,23 @@ export type SavingsTransactionPayload = {
   currency: CurrencyCode;
   transactionDate: string;
   savingsTargetId?: string;
+};
+
+export type LoanPayload = {
+  borrowerName: string;
+  description: string;
+  amount: number;
+  currency: CurrencyCode;
+  loanDate: string;
+  dueDate?: string;
+  notes?: string;
+};
+
+export type LoanRepaymentPayload = {
+  amount: number;
+  currency: CurrencyCode;
+  repaymentDate: string;
+  description?: string;
 };
 
 async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
@@ -303,6 +362,26 @@ export const api = {
   },
   createSavingsTransaction: (body: SavingsTransactionPayload) =>
     apiFetch<SavingsTransaction>('/api/savings-transactions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  loans: () => apiFetch<Loan[]>('/api/loans'),
+  loan: (id: string) => apiFetch<Loan>(`/api/loans/${id}`),
+  createLoan: (body: LoanPayload) =>
+    apiFetch<Loan>('/api/loans', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  updateLoan: (id: string, body: Partial<LoanPayload> & { status?: LoanStatus }) =>
+    apiFetch<Loan>(`/api/loans/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  recordLoanRepayment: (id: string, body: LoanRepaymentPayload) =>
+    apiFetch<Loan>(`/api/loans/${id}/repayments`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
