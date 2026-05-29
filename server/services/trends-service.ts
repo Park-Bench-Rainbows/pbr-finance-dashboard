@@ -1,12 +1,15 @@
 import { IncomeRepository } from '../repositories/income-repository';
 import { ExpenseRepository } from '../repositories/expense-repository';
 import { DailyExpenseRepository } from '../repositories/daily-expense-repository';
+import { DebtRepository } from '../repositories/debt-repository';
 
 export type MonthlyTrendPoint = {
   month: string; // YYYY-MM
   totalIncome: number;
   totalRecurringExpenses: number;
   totalDailySpend: number;
+  debtPaymentsTotal: number;
+  borrowedFundsTotal: number;
   dailySpendByCategory: Record<string, number>;
 };
 
@@ -21,18 +24,6 @@ function toISODateLocal(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
-}
-
-function monthRange(month: string): { startISO: string; endISO: string } {
-  const [yearStr, monthStr] = month.split('-');
-  const year = Number(yearStr);
-  const m = Number(monthStr);
-  const startISO = `${yearStr}-${monthStr}-01`;
-  const endDate = new Date(year, m, 0);
-  const endMonth = String(endDate.getMonth() + 1).padStart(2, '0');
-  const endDay = String(endDate.getDate()).padStart(2, '0');
-  const endISO = `${endDate.getFullYear()}-${endMonth}-${endDay}`;
-  return { startISO, endISO };
 }
 
 function listMonthsInclusive(startMonth: string, endMonth: string): string[] {
@@ -56,15 +47,18 @@ export class TrendsService {
   private incomeRepository: IncomeRepository;
   private expenseRepository: ExpenseRepository;
   private dailyExpenseRepository: DailyExpenseRepository;
+  private debtRepository: DebtRepository;
 
   constructor(
     incomeRepository?: IncomeRepository,
     expenseRepository?: ExpenseRepository,
-    dailyExpenseRepository?: DailyExpenseRepository
+    dailyExpenseRepository?: DailyExpenseRepository,
+    debtRepository?: DebtRepository
   ) {
     this.incomeRepository = incomeRepository ?? new IncomeRepository();
     this.expenseRepository = expenseRepository ?? new ExpenseRepository();
     this.dailyExpenseRepository = dailyExpenseRepository ?? new DailyExpenseRepository();
+    this.debtRepository = debtRepository ?? new DebtRepository();
   }
 
   async getYtdMonthlyTrends(userId: string, endMonth: string, endDateISO?: string): Promise<MonthlyTrendPoint[]> {
@@ -75,6 +69,15 @@ export class TrendsService {
     const ytdStartISO = `${year}-01-01`;
     const ytdEndISO = endDateISO ?? toISODateLocal(new Date());
     const ytdDailyExpenses = await this.dailyExpenseRepository.findForRange(userId, ytdStartISO, ytdEndISO);
+    const ytdDebtTransactions = await this.debtRepository.findTransactionsByRange(userId, ytdStartISO, ytdEndISO);
+    const debtTransactionsByMonth = new Map<string, { debtPaymentsTotal: number; borrowedFundsTotal: number }>();
+    for (const tx of ytdDebtTransactions) {
+      const month = monthFromDate(tx.transactionDate);
+      const current = debtTransactionsByMonth.get(month) ?? { debtPaymentsTotal: 0, borrowedFundsTotal: 0 };
+      if (tx.category === 'debt_payment') current.debtPaymentsTotal += tx.amount;
+      if (tx.category === 'borrowed_funds') current.borrowedFundsTotal += tx.amount;
+      debtTransactionsByMonth.set(month, current);
+    }
 
     const spendByMonthCategory = new Map<string, Map<string, number>>();
     const spendTotalByMonth = new Map<string, number>();
@@ -103,6 +106,7 @@ export class TrendsService {
         if (e.frequency === 'annual') return sum + e.amount / 12;
         return sum;
       }, 0);
+      const debtTotals = debtTransactionsByMonth.get(month) ?? { debtPaymentsTotal: 0, borrowedFundsTotal: 0 };
 
       const catMap = spendByMonthCategory.get(month);
       const dailySpendByCategory: Record<string, number> = {};
@@ -115,6 +119,8 @@ export class TrendsService {
         totalIncome,
         totalRecurringExpenses,
         totalDailySpend: spendTotalByMonth.get(month) ?? 0,
+        debtPaymentsTotal: debtTotals.debtPaymentsTotal,
+        borrowedFundsTotal: debtTotals.borrowedFundsTotal,
         dailySpendByCategory,
       });
     }
@@ -122,4 +128,3 @@ export class TrendsService {
     return points;
   }
 }
-

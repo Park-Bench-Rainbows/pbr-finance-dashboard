@@ -151,6 +151,28 @@ export const loanTransactionDirections = ['outflow', 'inflow'] as const;
 export const loanTransactionCategories = ['money_lent', 'loan_repayment'] as const;
 export const transactionSourceTypes = ['loan'] as const;
 
+export const debtStatuses = ['active', 'partially_paid', 'paid', 'overdue', 'written_off', 'cancelled'] as const;
+export const debtTypes = [
+  'credit_card',
+  'car_loan',
+  'bank_loan',
+  'student_loan',
+  'personal_loan',
+  'buy_now_pay_later',
+  'other',
+] as const;
+export const debtTransactionDirections = ['inflow', 'outflow', 'adjustment'] as const;
+export const debtTransactionCategories = [
+  'borrowed_funds',
+  'debt_payment',
+  'interest_adjustment',
+  'fee_adjustment',
+  'balance_correction',
+  'new_charge',
+] as const;
+export const debtTransactionBalanceEffects = ['none', 'increase', 'decrease'] as const;
+export const debtTransactionSourceTypes = ['debt'] as const;
+
 export const loans = pgTable('loans', {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
@@ -199,4 +221,74 @@ export const loanTransactions = pgTable('loan_transactions', {
 }, (table) => ({
   loanTransactionsUserDateIdx: index('loan_transactions_user_date_idx').on(table.userId, table.transactionDate),
   loanTransactionsLoanDateIdx: index('loan_transactions_loan_date_idx').on(table.loanId, table.transactionDate),
+}));
+
+export const debts = pgTable('debts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  lenderName: text('lender_name').notNull(),
+  debtType: text('debt_type', { enum: debtTypes }).notNull(),
+  originalCurrency: text('original_currency', { enum: supportedCurrencies }),
+  originalAmountCents: integer('original_amount_cents'),
+  baseCurrency: text('base_currency', { enum: supportedCurrencies }).notNull(),
+  currentBalanceCents: integer('current_balance_cents').notNull(),
+  totalPaidCents: integer('total_paid_cents').notNull().default(0),
+  interestRate: numeric('interest_rate', { precision: 8, scale: 4 }),
+  minimumPaymentCents: integer('minimum_payment_cents'),
+  paymentFrequency: text('payment_frequency', { enum: ['weekly', 'biweekly', 'monthly', 'quarterly', 'annual', 'custom'] }),
+  paymentDueDay: integer('payment_due_day'),
+  paymentDueDate: date('payment_due_date'),
+  startDate: date('start_date').notNull(),
+  targetPayoffDate: date('target_payoff_date'),
+  status: text('status', { enum: debtStatuses }).notNull().default('active'),
+  notes: text('notes'),
+  createsCashInflow: boolean('creates_cash_inflow').notNull().default(false),
+  linkedRecurringExpenseId: uuid('linked_recurring_expense_id').references(() => recurringExpenses.id, { onDelete: 'set null' }),
+  createdBorrowedFundsTransactionId: uuid('created_borrowed_funds_transaction_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  debtsUserIdIdx: index('debts_user_id_idx').on(table.userId),
+  debtsUserStatusIdx: index('debts_user_status_idx').on(table.userId, table.status),
+  debtsDueDateIdx: index('debts_due_date_idx').on(table.userId, table.paymentDueDate),
+}));
+
+export const debtTransactions = pgTable('debt_transactions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  debtId: uuid('debt_id').notNull().references(() => debts.id, { onDelete: 'cascade' }),
+  sourceType: text('source_type', { enum: debtTransactionSourceTypes }).notNull().default('debt'),
+  direction: text('direction', { enum: debtTransactionDirections }).notNull(),
+  category: text('category', { enum: debtTransactionCategories }).notNull(),
+  balanceEffect: text('balance_effect', { enum: debtTransactionBalanceEffects }).notNull().default('none'),
+  description: text('description').notNull(),
+  transactionDate: date('transaction_date').notNull(),
+  originalCurrency: text('original_currency', { enum: supportedCurrencies }),
+  originalAmountCents: integer('original_amount_cents').notNull(),
+  baseCurrency: text('base_currency', { enum: supportedCurrencies }).notNull(),
+  baseAmountCents: integer('base_amount_cents').notNull(),
+  fxRate: numeric('fx_rate', { precision: 18, scale: 8 }),
+  fxAsOf: timestamp('fx_as_of', { withTimezone: true }),
+  fxSource: text('fx_source'),
+  linkedRecurringExpenseId: uuid('linked_recurring_expense_id').references(() => recurringExpenses.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  debtTransactionsUserDateIdx: index('debt_transactions_user_date_idx').on(table.userId, table.transactionDate),
+  debtTransactionsDebtDateIdx: index('debt_transactions_debt_date_idx').on(table.debtId, table.transactionDate),
+}));
+
+export const debtPayoffPlans = pgTable('debt_payoff_plans', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  debtId: uuid('debt_id').notNull().references(() => debts.id, { onDelete: 'cascade' }),
+  targetPayoffDate: date('target_payoff_date').notNull(),
+  plannedMonthlyPaymentCents: integer('planned_monthly_payment_cents'),
+  notes: text('notes'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  debtPayoffPlansDebtUq: uniqueIndex('debt_payoff_plans_debt_uq').on(table.debtId),
+  debtPayoffPlansUserIdx: index('debt_payoff_plans_user_idx').on(table.userId),
 }));

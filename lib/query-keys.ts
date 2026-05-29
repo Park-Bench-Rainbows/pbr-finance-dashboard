@@ -12,6 +12,9 @@ export const queryKeys = {
     ['savings-transactions', month, savingsTargetId ?? 'all'] as const,
   loans: ['loans'] as const,
   loan: (id: string) => ['loans', id] as const,
+  debts: ['debts'] as const,
+  debt: (id: string) => ['debts', id] as const,
+  debtPayoffPlan: (id: string) => ['debts', id, 'payoff-plan'] as const,
   dailyExpenses: {
     month: (month: string) => ['daily-expenses', 'month', month] as const,
     date: (date: string) => ['daily-expenses', 'date', date] as const,

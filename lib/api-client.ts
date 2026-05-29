@@ -146,6 +146,10 @@ export type MonthlySummary = {
   totalExpenses: number;
   totalSavings: number;
   totalDailySpend: number;
+  debtPaymentsTotal?: number;
+  borrowedFundsTotal?: number;
+  debtAdjustmentsNet?: number;
+  cashflowAfterDebt?: number;
   remainingDisposable: number;
   disposableIncome: number;
   expensesByCategory: Record<string, number>;
@@ -160,6 +164,8 @@ export type TrendsPoint = {
   totalIncome: number;
   totalRecurringExpenses: number;
   totalDailySpend: number;
+  debtPaymentsTotal?: number;
+  borrowedFundsTotal?: number;
   dailySpendByCategory: Record<string, number>;
 };
 
@@ -239,6 +245,123 @@ export type LoanRepaymentPayload = {
   currency: CurrencyCode;
   repaymentDate: string;
   description?: string;
+};
+
+export type DebtStatus = 'active' | 'partially_paid' | 'paid' | 'overdue' | 'written_off' | 'cancelled';
+export type DebtType =
+  | 'credit_card'
+  | 'car_loan'
+  | 'bank_loan'
+  | 'student_loan'
+  | 'personal_loan'
+  | 'buy_now_pay_later'
+  | 'other';
+export type DebtPaymentFrequency = 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'annual' | 'custom';
+export type DebtTransactionDirection = 'inflow' | 'outflow' | 'adjustment';
+export type DebtTransactionCategory =
+  | 'borrowed_funds'
+  | 'debt_payment'
+  | 'interest_adjustment'
+  | 'fee_adjustment'
+  | 'balance_correction'
+  | 'new_charge';
+export type DebtTransactionBalanceEffect = 'none' | 'increase' | 'decrease';
+
+export type DebtTransaction = {
+  id: string;
+  debtId: string;
+  sourceType: 'debt';
+  direction: DebtTransactionDirection;
+  category: DebtTransactionCategory;
+  balanceEffect: DebtTransactionBalanceEffect;
+  description: string;
+  transactionDate: string;
+  amount: number;
+  baseCurrency: CurrencyCode;
+  originalAmount: number;
+  originalCurrency?: CurrencyCode;
+  fxRate?: string;
+  fxAsOf?: string;
+  fxSource?: string;
+  linkedRecurringExpenseId?: string;
+};
+
+export type DebtPayoffPlan = {
+  id: string;
+  debtId: string;
+  targetPayoffDate: string;
+  plannedMonthlyPayment?: number;
+  notes?: string;
+};
+
+export type Debt = {
+  id: string;
+  name: string;
+  lenderName: string;
+  debtType: DebtType;
+  originalAmount?: number;
+  originalCurrency?: CurrencyCode;
+  baseCurrency: CurrencyCode;
+  currentBalance: number;
+  totalPaid: number;
+  interestRate?: number;
+  minimumPayment?: number;
+  paymentFrequency?: DebtPaymentFrequency;
+  paymentDueDay?: number;
+  paymentDueDate?: string;
+  startDate: string;
+  targetPayoffDate?: string;
+  status: DebtStatus;
+  notes?: string;
+  createsCashInflow: boolean;
+  linkedRecurringExpenseId?: string;
+  createdBorrowedFundsTransactionId?: string;
+  payoffPlan?: DebtPayoffPlan;
+  transactions?: DebtTransaction[];
+};
+
+export type DebtPayload = {
+  name: string;
+  lenderName: string;
+  debtType: DebtType;
+  amount: number;
+  currency: CurrencyCode;
+  originalAmount?: number;
+  originalCurrency?: CurrencyCode;
+  interestRate?: number;
+  minimumPayment?: number;
+  paymentFrequency?: DebtPaymentFrequency;
+  paymentDueDay?: number;
+  paymentDueDate?: string;
+  startDate: string;
+  targetPayoffDate?: string;
+  notes?: string;
+  createsCashInflow?: boolean;
+  linkedRecurringExpenseId?: string;
+};
+
+export type DebtPaymentPayload = {
+  amount: number;
+  currency: CurrencyCode;
+  paymentDate: string;
+  description?: string;
+  linkedRecurringExpenseId?: string;
+};
+
+export type DebtAdjustmentPayload = {
+  amount: number;
+  currency: CurrencyCode;
+  adjustmentDate: string;
+  category: DebtTransactionCategory;
+  effect: 'increase' | 'decrease';
+  description?: string;
+  linkedRecurringExpenseId?: string;
+};
+
+export type DebtPayoffPlanPayload = {
+  targetPayoffDate: string;
+  plannedMonthlyPayment?: number;
+  notes?: string;
 };
 
 async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
@@ -385,5 +508,46 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+    }),
+  debts: () => apiFetch<Debt[]>('/api/debts'),
+  debt: (id: string) => apiFetch<Debt>(`/api/debts/${id}`),
+  createDebt: (body: DebtPayload) =>
+    apiFetch<Debt>('/api/debts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  updateDebt: (id: string, body: Partial<DebtPayload> & { status?: DebtStatus }) =>
+    apiFetch<Debt>(`/api/debts/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  deleteDebt: (id: string) => apiFetch<{ success: boolean }>(`/api/debts/${id}`, { method: 'DELETE' }),
+  recordDebtPayment: (id: string, body: DebtPaymentPayload) =>
+    apiFetch<Debt>(`/api/debts/${id}/payments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  adjustDebtBalance: (id: string, body: DebtAdjustmentPayload) =>
+    apiFetch<Debt>(`/api/debts/${id}/adjustments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  debtPayoffPlan: (id: string) => apiFetch<DebtPayoffPlan>(`/api/debts/${id}/payoff-plan`),
+  upsertDebtPayoffPlan: (id: string, body: DebtPayoffPlanPayload) =>
+    apiFetch<DebtPayoffPlan>(`/api/debts/${id}/payoff-plan`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  deleteDebtPayoffPlan: (id: string) => apiFetch<{ success: boolean }>(`/api/debts/${id}/payoff-plan`, { method: 'DELETE' }),
+  applyScheduledDebtPayment: (id: string) =>
+    apiFetch<Debt>(`/api/debts/${id}/scheduled-payment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
     }),
 };

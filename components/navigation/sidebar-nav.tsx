@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import {
   CalendarDays,
+  BadgeDollarSign,
   LayoutDashboard,
   HandCoins,
   PiggyBank,
@@ -32,6 +33,7 @@ const navItems: NavItem[] = [
   { href: '/income', label: 'Income', icon: Wallet },
   { href: '/expenses', label: 'Expenses', icon: Receipt },
   { href: '/loans', label: 'Loans', icon: HandCoins },
+  { href: '/debts', label: 'Debts', icon: BadgeDollarSign },
   { href: '/budgets', label: 'Budgets', icon: PieChart },
   { href: '/savings', label: 'Savings', icon: PiggyBank },
   { href: '/daily-expenses', label: 'Daily', icon: CalendarDays },

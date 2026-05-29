@@ -6,6 +6,7 @@ import { ExpenseRepository } from '../repositories/expense-repository';
 import { SavingsPlanService } from './savings-plan-service';
 import { DailyExpenseService } from './daily-expense-service';
 import { BudgetService } from './budget-service';
+import { DebtRepository } from '../repositories/debt-repository';
 
 /**
  * SummaryService - Calculates monthly financial summaries
@@ -16,19 +17,22 @@ export class SummaryService {
   private savingsService: SavingsPlanService;
   private dailyExpenseService: DailyExpenseService;
   private budgetService: BudgetService;
+  private debtRepository: DebtRepository;
 
   constructor(
     incomeRepository?: IncomeRepository,
     expenseRepository?: ExpenseRepository,
     savingsService?: SavingsPlanService,
     dailyExpenseService?: DailyExpenseService,
-    budgetService?: BudgetService
+    budgetService?: BudgetService,
+    debtRepository?: DebtRepository
   ) {
     this.incomeRepository = incomeRepository || new IncomeRepository();
     this.expenseRepository = expenseRepository || new ExpenseRepository();
     this.savingsService = savingsService || new SavingsPlanService();
     this.dailyExpenseService = dailyExpenseService || new DailyExpenseService();
     this.budgetService = budgetService || new BudgetService(undefined, this.dailyExpenseService);
+    this.debtRepository = debtRepository || new DebtRepository();
   }
   /**
    * Get monthly summary for a specific user and month
@@ -45,13 +49,28 @@ export class SummaryService {
     const totalExpenses = this.calculateTotalMonthlyExpenses(activeExpenses);
     const totalSavings = await this.savingsService.calculateMonthlyTotal(userId, month);
     const totalDailySpend = await this.dailyExpenseService.calculateMonthlyTotal(userId, month);
+    const debtTransactions = await this.debtRepository.findTransactionsForMonth(userId, month);
+    const debtPaymentsTotal = debtTransactions
+      .filter((tx) => tx.category === 'debt_payment')
+      .reduce((sum, tx) => sum + tx.amount, 0);
+    const borrowedFundsTotal = debtTransactions
+      .filter((tx) => tx.category === 'borrowed_funds')
+      .reduce((sum, tx) => sum + tx.amount, 0);
+    const debtAdjustmentsNet = debtTransactions
+      .filter((tx) => tx.direction === 'adjustment')
+      .reduce((sum, tx) => {
+        if (tx.balanceEffect === 'increase') return sum + tx.amount;
+        if (tx.balanceEffect === 'decrease') return sum - tx.amount;
+        return sum;
+      }, 0);
     const expensesByCategory = this.groupExpensesByCategory(activeExpenses);
     const disposableIncome = totalIncome - totalExpenses - totalSavings;
     const remainingDisposable = disposableIncome - totalDailySpend;
+    const cashflowAfterDebt = totalIncome + borrowedFundsTotal - totalExpenses - totalSavings - totalDailySpend - debtPaymentsTotal;
     const dailySpendByCategory = await this.dailyExpenseService.groupByCategory(userId, month);
     const dailySpendByDay = await this.dailyExpenseService.groupByDay(userId, month);
     const budgets = await this.budgetService.getBudgetsForMonth(userId, month);
-    const budgetsByCategory: any = {};
+    const budgetsByCategory: Record<string, number> = {};
     for (const b of budgets) budgetsByCategory[b.category] = b.monthlyLimit;
     const budgetRemainingByCategory = await this.budgetService.computeRemainingByCategory(userId, month);
 
@@ -61,6 +80,10 @@ export class SummaryService {
       totalExpenses,
       totalSavings,
       totalDailySpend,
+      debtPaymentsTotal,
+      borrowedFundsTotal,
+      debtAdjustmentsNet,
+      cashflowAfterDebt,
       remainingDisposable,
       disposableIncome,
       expensesByCategory,
