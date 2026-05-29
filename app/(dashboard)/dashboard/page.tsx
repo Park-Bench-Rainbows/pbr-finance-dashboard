@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -10,8 +10,8 @@ import { Label } from '@/components/ui/label';
 import Link from 'next/link';
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, ResponsiveContainer, LineChart, Line } from 'recharts';
-import { Plus } from 'lucide-react';
-import { api, type CurrencyCode, type DailyExpensePayload, type MonthlySummary, type TrendsPoint } from '@/lib/api-client';
+import { Eye, EyeOff, Plus } from 'lucide-react';
+import { api, type CurrencyCode, type DailyExpensePayload } from '@/lib/api-client';
 import { queryKeys } from '@/lib/query-keys';
 import {
   DailyExpenseDialog,
@@ -22,6 +22,7 @@ import {
 } from '@/components/daily-expenses/daily-expense-dialog';
 import { useIsMobile } from '@/components/hooks/use-mobile';
 import { SegmentedToggle } from '@/components/ui/segmented-toggle';
+import { SensitiveValue } from '@/components/ui/sensitive-value';
 
 const n = (value: unknown): number => {
   const num = typeof value === 'number' ? value : Number(value);
@@ -75,6 +76,23 @@ function endOfMonthISO(month: string): string {
   return `${d.getFullYear()}-${mm}-${dd}`;
 }
 
+function PrivacyChartPlaceholder({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="flex h-[240px] w-full items-center justify-center rounded-lg border border-dashed border-muted-foreground/25 bg-muted/20 px-6 text-center sm:h-[300px]">
+      <div className="max-w-xs space-y-2">
+        <div className="text-sm font-medium text-foreground">{title}</div>
+        <div className="text-sm text-muted-foreground">{description}</div>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const queryClient = useQueryClient();
   const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -83,6 +101,7 @@ export default function DashboardPage() {
   });
   const [view, setView] = useState<'month' | 'ytd'>('month');
   const [transactionDialogOpen, setTransactionDialogOpen] = useState(false);
+  const [isSensitiveValuesVisible, setIsSensitiveValuesVisible] = useState(false);
   const isMobile = useIsMobile();
   const currentMonth = todayISO().slice(0, 7);
   const ytdEndDate = selectedMonth === currentMonth ? todayISO() : endOfMonthISO(selectedMonth);
@@ -157,6 +176,26 @@ export default function DashboardPage() {
   const budgetProgress = totalBudget > 0 ? Math.min(totalBudgetSpent / totalBudget, 1) : 0;
   const isOverBudget = totalBudget > 0 && totalBudgetRemaining < 0;
 
+  useEffect(() => {
+    const hideSensitiveValues = () => {
+      setIsSensitiveValuesVisible(false);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        hideSensitiveValues();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', hideSensitiveValues);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', hideSensitiveValues);
+    };
+  }, []);
+
   if (summaryQuery.isLoading) {
     return <div>Loading...</div>;
   }
@@ -164,7 +203,20 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-3xl font-bold">Dashboard</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-3xl font-bold">Dashboard</h1>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="shrink-0"
+            aria-label={isSensitiveValuesVisible ? 'Hide sensitive values' : 'Show sensitive values'}
+            aria-pressed={isSensitiveValuesVisible}
+            onClick={() => setIsSensitiveValuesVisible((value) => !value)}
+          >
+            {isSensitiveValuesVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </Button>
+        </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="w-full sm:w-auto">
             <Label className="mb-1 block text-xs text-muted-foreground">View</Label>
@@ -216,12 +268,13 @@ export default function DashboardPage() {
                   <CardTitle className="text-sm font-medium text-white">Total Income</CardTitle>
                 </CardHeader>
                 <CardContent className="flex-1">
-                  <div
+                  <SensitiveValue
                     className="text-2xl font-bold text-white tabular-nums truncate"
+                    isRevealed={isSensitiveValuesVisible}
+                    value={formatCompactCurrency(n(summary.totalIncome), baseCurrency)}
+                    hiddenLabel="Total income"
                     title={formatCurrency(n(summary.totalIncome), baseCurrency)}
-                  >
-                    {formatCompactCurrency(n(summary.totalIncome), baseCurrency)}
-                  </div>
+                  />
                 </CardContent>
               </Card>
             </Link>
@@ -236,19 +289,26 @@ export default function DashboardPage() {
                   <CardTitle className="text-sm font-medium text-white">Total Expenses</CardTitle>
                 </CardHeader>
                 <CardContent className="flex-1 space-y-3">
-                  <div
+                  <SensitiveValue
                     className="text-2xl font-bold text-white tabular-nums truncate"
+                    isRevealed={isSensitiveValuesVisible}
+                    value={formatCompactCurrency(n(summary.totalExpenses), baseCurrency)}
+                    hiddenLabel="Total expenses"
                     title={formatCurrency(n(summary.totalExpenses), baseCurrency)}
-                  >
-                    {formatCompactCurrency(n(summary.totalExpenses), baseCurrency)}
-                  </div>
+                  />
 
                   <div className="rounded-md border border-white/30 bg-white/10 p-2 backdrop-blur-sm">
                     <div className="flex items-center justify-between text-xs text-white/90">
                       <span>Budget status</span>
                       {totalBudget > 0 ? (
                         <span className={isOverBudget ? 'font-semibold text-white' : ''}>
-                          {formatCompactCurrency(totalBudgetRemaining, baseCurrency)} left
+                          <SensitiveValue
+                            isRevealed={isSensitiveValuesVisible}
+                            value={formatCompactCurrency(totalBudgetRemaining, baseCurrency)}
+                            hiddenLabel="Budget remaining"
+                            title={formatCurrency(totalBudgetRemaining, baseCurrency)}
+                          />{' '}
+                          left
                         </span>
                       ) : (
                         <span>Not set</span>
@@ -261,11 +321,23 @@ export default function DashboardPage() {
                       />
                     </div>
                     <div className="mt-2 flex items-center justify-between text-[11px] text-white/70">
-                      <span title={formatCurrency(totalBudgetSpent, baseCurrency)}>
-                        Spent {formatCompactCurrency(totalBudgetSpent, baseCurrency)}
+                      <span>
+                        Spent{' '}
+                        <SensitiveValue
+                          isRevealed={isSensitiveValuesVisible}
+                          value={formatCompactCurrency(totalBudgetSpent, baseCurrency)}
+                          hiddenLabel="Budget spent"
+                          title={formatCurrency(totalBudgetSpent, baseCurrency)}
+                        />
                       </span>
-                      <span title={formatCurrency(totalBudget, baseCurrency)}>
-                        Budget {formatCompactCurrency(totalBudget, baseCurrency)}
+                      <span>
+                        Budget{' '}
+                        <SensitiveValue
+                          isRevealed={isSensitiveValuesVisible}
+                          value={formatCompactCurrency(totalBudget, baseCurrency)}
+                          hiddenLabel="Total budget"
+                          title={formatCurrency(totalBudget, baseCurrency)}
+                        />
                       </span>
                     </div>
                   </div>
@@ -283,12 +355,13 @@ export default function DashboardPage() {
                   <CardTitle className="text-sm font-medium text-white">Total Savings</CardTitle>
                 </CardHeader>
                 <CardContent className="flex-1">
-                  <div
+                  <SensitiveValue
                     className="text-2xl font-bold text-white tabular-nums truncate"
+                    isRevealed={isSensitiveValuesVisible}
+                    value={formatCompactCurrency(n(summary.totalSavings), baseCurrency)}
+                    hiddenLabel="Total savings"
                     title={formatCurrency(n(summary.totalSavings), baseCurrency)}
-                  >
-                    {formatCompactCurrency(n(summary.totalSavings), baseCurrency)}
-                  </div>
+                  />
                 </CardContent>
               </Card>
             </Link>
@@ -303,12 +376,13 @@ export default function DashboardPage() {
                   <CardTitle className="text-sm font-medium text-white">Daily Spending</CardTitle>
                 </CardHeader>
                 <CardContent className="flex-1">
-                  <div
+                  <SensitiveValue
                     className="text-2xl font-bold text-white tabular-nums truncate"
+                    isRevealed={isSensitiveValuesVisible}
+                    value={formatCompactCurrency(n(summary.totalDailySpend), baseCurrency)}
+                    hiddenLabel="Daily spending"
                     title={formatCurrency(n(summary.totalDailySpend), baseCurrency)}
-                  >
-                    {formatCompactCurrency(n(summary.totalDailySpend), baseCurrency)}
-                  </div>
+                  />
                 </CardContent>
               </Card>
             </Link>
@@ -323,14 +397,21 @@ export default function DashboardPage() {
                   <CardTitle className="text-sm font-medium text-white">Remaining Disposable</CardTitle>
                 </CardHeader>
                 <CardContent className="flex-1">
-                  <div
+                  <SensitiveValue
                     className="text-2xl font-bold tabular-nums truncate text-white"
+                    isRevealed={isSensitiveValuesVisible}
+                    value={formatCompactCurrency(n(summary.remainingDisposable), baseCurrency)}
+                    hiddenLabel="Remaining disposable income"
                     title={formatCurrency(n(summary.remainingDisposable), baseCurrency)}
-                  >
-                    {formatCompactCurrency(n(summary.remainingDisposable), baseCurrency)}
-                  </div>
-                  <div className="text-xs text-white/70 tabular-nums truncate" title={formatCurrency(n(summary.disposableIncome), baseCurrency)}>
-                    Planned: {formatCompactCurrency(n(summary.disposableIncome), baseCurrency)}
+                  />
+                  <div className="text-xs text-white/70 tabular-nums truncate">
+                    Planned:{' '}
+                    <SensitiveValue
+                      isRevealed={isSensitiveValuesVisible}
+                      value={formatCompactCurrency(n(summary.disposableIncome), baseCurrency)}
+                      hiddenLabel="Planned disposable income"
+                      title={formatCurrency(n(summary.disposableIncome), baseCurrency)}
+                    />
                   </div>
                 </CardContent>
               </Card>
@@ -383,9 +464,13 @@ export default function DashboardPage() {
                             </td>
                             <td
                               className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums"
-                              title={formatCurrency(n(row.amount), baseCurrency)}
                             >
-                              {formatCompactCurrency(n(row.amount), baseCurrency)}
+                              <SensitiveValue
+                                isRevealed={isSensitiveValuesVisible}
+                                value={formatCompactCurrency(n(row.amount), baseCurrency)}
+                                hiddenLabel="Transaction amount"
+                                title={formatCurrency(n(row.amount), baseCurrency)}
+                              />
                             </td>
                           </tr>
                         ))}
@@ -403,7 +488,12 @@ export default function DashboardPage() {
                             </div>
                           </div>
                           <div className="shrink-0 text-right font-semibold tabular-nums">
-                            {formatCompactCurrency(n(row.amount), baseCurrency)}
+                            <SensitiveValue
+                              isRevealed={isSensitiveValuesVisible}
+                              value={formatCompactCurrency(n(row.amount), baseCurrency)}
+                              hiddenLabel="Transaction amount"
+                              title={formatCurrency(n(row.amount), baseCurrency)}
+                            />
                           </div>
                         </div>
                         <Badge variant={dailyCategoryBadgeVariant[row.category]} className="mt-2 capitalize">
@@ -443,31 +533,48 @@ export default function DashboardPage() {
                       .filter((r) => r.budget > 0)
                       .sort((a, b) => a.remaining - b.remaining)
                       .slice(0, 5)
-                      .map((row) => (
-                        <div key={row.category} className="space-y-2">
-                          <div className="flex items-center justify-between text-sm">
-                            <div className="font-medium capitalize">{row.category}</div>
-                            <div className="tabular-nums text-muted-foreground" title={formatCurrency(row.remaining, baseCurrency)}>
-                              {row.remaining >= 0 ? 'Left ' : 'Over '}
-                              {formatCompactCurrency(Math.abs(row.remaining), baseCurrency)}
+                          .map((row) => (
+                          <div key={row.category} className="space-y-2">
+                            <div className="flex items-center justify-between text-sm">
+                              <div className="font-medium capitalize">{row.category}</div>
+                              <div className="tabular-nums text-muted-foreground">
+                                {row.remaining >= 0 ? 'Left ' : 'Over '}
+                                <SensitiveValue
+                                  isRevealed={isSensitiveValuesVisible}
+                                  value={formatCompactCurrency(Math.abs(row.remaining), baseCurrency)}
+                                  hiddenLabel="Budget remaining by category"
+                                  title={formatCurrency(row.remaining, baseCurrency)}
+                                />
+                              </div>
+                            </div>
+                            <div className="h-2 overflow-hidden rounded-full bg-muted">
+                              <div
+                                className={row.remaining < 0 ? 'h-full bg-rose-500' : 'h-full bg-emerald-500'}
+                                style={{ width: `${Math.round(row.progress * 100)}%` }}
+                              />
+                            </div>
+                            <div className="flex items-center justify-between text-[11px] text-muted-foreground tabular-nums">
+                              <span>
+                                Spent{' '}
+                                <SensitiveValue
+                                  isRevealed={isSensitiveValuesVisible}
+                                  value={formatCompactCurrency(row.spent, baseCurrency)}
+                                  hiddenLabel="Budget spent"
+                                  title={formatCurrency(row.spent, baseCurrency)}
+                                />
+                              </span>
+                              <span>
+                                Budget{' '}
+                                <SensitiveValue
+                                  isRevealed={isSensitiveValuesVisible}
+                                  value={formatCompactCurrency(row.budget, baseCurrency)}
+                                  hiddenLabel="Total budget"
+                                  title={formatCurrency(row.budget, baseCurrency)}
+                                />
+                              </span>
                             </div>
                           </div>
-                          <div className="h-2 overflow-hidden rounded-full bg-muted">
-                            <div
-                              className={row.remaining < 0 ? 'h-full bg-rose-500' : 'h-full bg-emerald-500'}
-                              style={{ width: `${Math.round(row.progress * 100)}%` }}
-                            />
-                          </div>
-                          <div className="flex items-center justify-between text-[11px] text-muted-foreground tabular-nums">
-                            <span title={formatCurrency(row.spent, baseCurrency)}>
-                              Spent {formatCompactCurrency(row.spent, baseCurrency)}
-                            </span>
-                            <span title={formatCurrency(row.budget, baseCurrency)}>
-                              Budget {formatCompactCurrency(row.budget, baseCurrency)}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
+                        ))}
                   </div>
                 ) : (
                   <div className="text-sm text-muted-foreground">
@@ -495,26 +602,33 @@ export default function DashboardPage() {
                     <CardTitle>Income vs Expenses</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <ChartContainer config={incomeExpenseChartConfig} className="h-[240px] w-full sm:h-[300px]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart accessibilityLayer data={incomeVsExpensesData} margin={{ left: isMobile ? 0 : 8, right: 8 }}>
-                          <CartesianGrid vertical={false} />
-                          <XAxis dataKey="name" tickLine={false} axisLine={false} tickMargin={10} />
-                          <YAxis hide={isMobile} tickLine={false} axisLine={false} />
-                          <ChartTooltip
-                            content={
-                              <ChartTooltipContent
-                                formatter={(value) => formatCurrency(value as number, baseCurrency)}
-                                indicator="dot"
-                                hideLabel
-                              />
-                            }
-                          />
-                          <ChartLegend content={<ChartLegendContent />} />
-                          <Bar dataKey="amount" fill="var(--color-income)" radius={6} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </ChartContainer>
+                    {isSensitiveValuesVisible ? (
+                      <ChartContainer config={incomeExpenseChartConfig} className="h-[240px] w-full sm:h-[300px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart accessibilityLayer data={incomeVsExpensesData} margin={{ left: isMobile ? 0 : 8, right: 8 }}>
+                            <CartesianGrid vertical={false} />
+                            <XAxis dataKey="name" tickLine={false} axisLine={false} tickMargin={10} />
+                            <YAxis hide={isMobile} tickLine={false} axisLine={false} />
+                            <ChartTooltip
+                              content={
+                                <ChartTooltipContent
+                                  formatter={(value) => formatCurrency(value as number, baseCurrency)}
+                                  indicator="dot"
+                                  hideLabel
+                                />
+                              }
+                            />
+                            <ChartLegend content={<ChartLegendContent />} />
+                            <Bar dataKey="amount" fill="var(--color-income)" radius={6} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </ChartContainer>
+                    ) : (
+                      <PrivacyChartPlaceholder
+                        title="Sensitive chart hidden"
+                        description="Reveal sensitive values to view income and expense totals."
+                      />
+                    )}
                   </CardContent>
                 </Card>
 
@@ -523,44 +637,51 @@ export default function DashboardPage() {
                     <CardTitle>Income Allocation</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    {incomeAllocationData.some((item) => item.value > 0) ? (
-                      <ChartContainer
-                        config={allocationChartConfig}
-                        className="h-[240px] w-full sm:h-[300px] [&_.recharts-pie-label-text]:hidden sm:[&_.recharts-pie-label-text]:block"
-                      >
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie
-                              data={incomeAllocationData.map((d) => ({ ...d, fill: `var(--color-${d.name.toLowerCase()})` }))}
-                              cx="50%"
-                              cy="50%"
-                              innerRadius={isMobile ? 48 : 70}
-                              outerRadius={isMobile ? 78 : 100}
-                              paddingAngle={3}
-                              dataKey="value"
-                              nameKey="name"
-                              label={isMobile ? false : ({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
-                            >
-                              {incomeAllocationData.map((entry) => (
-                                <Cell key={entry.name} fill={`var(--color-${entry.name.toLowerCase()})`} />
-                              ))}
-                            </Pie>
-                            <ChartTooltip
-                              content={
-                                <ChartTooltipContent
-                                  formatter={(value) => formatCurrency(value as number, baseCurrency)}
-                                  indicator="dot"
-                                />
-                              }
-                            />
-                            <ChartLegend content={<ChartLegendContent />} />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      </ChartContainer>
+                    {isSensitiveValuesVisible ? (
+                      incomeAllocationData.some((item) => item.value > 0) ? (
+                        <ChartContainer
+                          config={allocationChartConfig}
+                          className="h-[240px] w-full sm:h-[300px] [&_.recharts-pie-label-text]:hidden sm:[&_.recharts-pie-label-text]:block"
+                        >
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie
+                                data={incomeAllocationData.map((d) => ({ ...d, fill: `var(--color-${d.name.toLowerCase()})` }))}
+                                cx="50%"
+                                cy="50%"
+                                innerRadius={isMobile ? 48 : 70}
+                                outerRadius={isMobile ? 78 : 100}
+                                paddingAngle={3}
+                                dataKey="value"
+                                nameKey="name"
+                                label={isMobile ? false : ({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
+                              >
+                                {incomeAllocationData.map((entry) => (
+                                  <Cell key={entry.name} fill={`var(--color-${entry.name.toLowerCase()})`} />
+                                ))}
+                              </Pie>
+                              <ChartTooltip
+                                content={
+                                  <ChartTooltipContent
+                                    formatter={(value) => formatCurrency(value as number, baseCurrency)}
+                                    indicator="dot"
+                                  />
+                                }
+                              />
+                              <ChartLegend content={<ChartLegendContent />} />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </ChartContainer>
+                      ) : (
+                        <div className="flex h-[300px] items-center justify-center text-muted-foreground">
+                          No allocation data to display
+                        </div>
+                      )
                     ) : (
-                      <div className="flex h-[300px] items-center justify-center text-muted-foreground">
-                        No allocation data to display
-                      </div>
+                      <PrivacyChartPlaceholder
+                        title="Sensitive chart hidden"
+                        description="Reveal sensitive values to view the allocation breakdown."
+                      />
                     )}
                   </CardContent>
                 </Card>
@@ -571,7 +692,12 @@ export default function DashboardPage() {
                   <CardTitle>YTD Monthly Trend</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {trendsLoading ? (
+                  {!isSensitiveValuesVisible ? (
+                    <PrivacyChartPlaceholder
+                      title="Sensitive chart hidden"
+                      description="Reveal sensitive values to view the monthly trend."
+                    />
+                  ) : trendsLoading ? (
                     <div className="flex h-[300px] items-center justify-center text-muted-foreground">Loading trends…</div>
                   ) : trends.length === 0 ? (
                     <div className="flex h-[300px] items-center justify-center text-muted-foreground">No trend data yet</div>
